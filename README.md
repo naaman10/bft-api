@@ -1,6 +1,6 @@
 # BFT API
 
-Backend for the BFT Learn student portal. This service validates Neon Auth sessions, creates users for the admin app, and sends first-login magic links through Resend. It will later serve Contentful content and Neon-backed user data.
+Backend for the BFT Learn student portal. This service validates Neon Auth sessions, creates users for the admin app, sends first-login magic links through Resend, and lists Contentful learning content.
 
 ## Prerequisites
 
@@ -158,6 +158,42 @@ Local webhook testing needs a public HTTPS tunnel (ngrok or Cloudflare Tunnel) p
 
 `FRONTEND_URL` should include the admin app origin as well as Learn, comma-separated, so CORS allows the admin browser to call this API.
 
+### `GET /admin/content`
+
+Lists published Contentful entries of type `content`. Filter options update with the other selected filters so dropdowns stay in sync.
+
+**Request**
+
+```
+GET /admin/content?subject=Maths&ageGroup=GCSE
+X-Admin-Api-Key: <ADMIN_API_KEY>
+```
+
+Optional query params: `type`, `subject`, `ageGroup`. Omit a param (or pass empty) to leave that facet unfiltered.
+
+**200**
+
+```json
+{
+  "filters": {
+    "type": ["Homework", "Lesson"],
+    "subject": ["English", "Maths"],
+    "ageGroup": ["11+", "GCSE"]
+  },
+  "items": [
+    {
+      "name": "Fractions recap",
+      "entryId": "abc123",
+      "type": "Lesson",
+      "subject": "Maths",
+      "ageGroup": "GCSE"
+    }
+  ]
+}
+```
+
+**401** if the admin key is missing or wrong. **503** if Contentful is not configured.
+
 ## Project structure
 
 ```
@@ -169,6 +205,7 @@ src/
   lib/neon-webhook.ts    Webhook signature verification
   lib/email.ts           Resend send helper
   lib/students.ts        Student records in Neon Database
+  lib/content.ts         Contentful content listing and filters
   lib/db.ts              Neon Database client
   lib/contentful.ts      Contentful Delivery API client
   lib/resend.ts          Resend client
@@ -178,7 +215,7 @@ src/
   index.ts               Node server (binds 0.0.0.0 for Render)
 ```
 
-`DATABASE_URL` is required for `/admin/user/create`. Contentful is optional until those features are used. Admin create-user also needs `ADMIN_API_KEY`, Neon management vars, `LEARN_APP_URL`, and Resend vars.
+`DATABASE_URL` is required for `/admin/user/create`. Contentful (`CONTENTFUL_SPACE_ID`, `CONTENTFUL_ACCESS_TOKEN`) is required for `/admin/content`. Admin create-user also needs `ADMIN_API_KEY`, Neon management vars, `LEARN_APP_URL`, and Resend vars.
 
 ## Deploy on Render
 

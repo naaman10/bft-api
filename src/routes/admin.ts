@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import { env } from "../config/env.js";
 import { requireAdmin } from "../middleware/require-admin.js";
 import {
   DuplicateUserError,
@@ -12,6 +13,7 @@ import {
   getStudentById,
   linkStudentToNeonUser,
 } from "../lib/students.js";
+import { listContent } from "../lib/content.js";
 import type { AppEnv } from "../types.js";
 
 const createUserBody = z.object({
@@ -23,6 +25,17 @@ const createUserBody = z.object({
     .max(256)
     .transform((email) => email.toLowerCase()),
   name: z.string().trim().min(1).max(255),
+});
+
+const optionalFilter = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  z.string().trim().min(1).optional()
+);
+
+const contentQuery = z.object({
+  type: optionalFilter,
+  subject: optionalFilter,
+  ageGroup: optionalFilter,
 });
 
 export const adminRoutes = new Hono<AppEnv>();
@@ -119,4 +132,31 @@ adminRoutes.post("/user/create", requireAdmin, async (c) => {
   }
 
   return c.json({ user, student, inviteSent: true }, 201);
+});
+
+adminRoutes.get("/content", requireAdmin, async (c) => {
+  if (!env.CONTENTFUL_SPACE_ID || !env.CONTENTFUL_ACCESS_TOKEN) {
+    return c.json({ error: "Contentful is not configured." }, 503);
+  }
+
+  const parsed = contentQuery.safeParse({
+    type: c.req.query("type"),
+    subject: c.req.query("subject"),
+    ageGroup: c.req.query("ageGroup"),
+  });
+
+  if (!parsed.success) {
+    return c.json(
+      {
+        error: "Invalid query parameters.",
+        details: parsed.error.issues.map((issue) => ({
+          path: issue.path.join("."),
+          message: issue.message,
+        })),
+      },
+      400
+    );
+  }
+
+  return c.json(await listContent(parsed.data));
 });
