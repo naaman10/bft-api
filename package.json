@@ -1,0 +1,30 @@
+{
+  "name": "bft-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.9"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.1",
+    "@neondatabase/serverless": "^1.1.0",
+    "contentful": "^11.12.9",
+    "dotenv": "^17.4.2",
+    "hono": "^4.13.5",
+    "jose": "^6.2.10",
+    "resend": "^6.25.0",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  }
+}

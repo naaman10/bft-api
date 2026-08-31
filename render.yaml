@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: bft-api
+    runtime: node
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: FRONTEND_URL
+        sync: false
+      - key: ADMIN_API_KEY
+        sync: false
+      - key: NEON_AUTH_BASE_URL
+        sync: false
+      - key: NEON_AUTH_JWKS_URL
+        sync: false
+      - key: NEON_API_KEY
+        sync: false
+      - key: NEON_PROJECT_ID
+        sync: false
+      - key: NEON_BRANCH_ID
+        sync: false
+      - key: LEARN_APP_URL
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: CONTENTFUL_SPACE_ID
+        sync: false
+      - key: CONTENTFUL_ACCESS_TOKEN
+        sync: false
+      - key: CONTENTFUL_ENVIRONMENT
+        value: master
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
