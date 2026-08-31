@@ -99,12 +99,13 @@ Content-Type: application/json
 
 ```json
 {
+  "studentId": "3f1c0a8e-2b9d-4c11-9e4a-8a6b1d2c3e4f",
   "email": "jane.student@example.com",
   "name": "Jane Student"
 }
 ```
 
-Do not send a password. Email is the login identity; name is stored on the Neon user.
+`studentId` is the existing `students.id`. The student row must already exist; this endpoint does not create it. Email is the login identity; name is stored on both Neon Auth and the student row. Do not send a password.
 
 **201**
 
@@ -115,11 +116,24 @@ Do not send a password. Email is the login identity; name is stored on the Neon 
     "email": "jane.student@example.com",
     "name": "Jane Student"
   },
+  "student": {
+    "id": "3f1c0a8e-2b9d-4c11-9e4a-8a6b1d2c3e4f",
+    "email": "jane.student@example.com",
+    "name": "Jane Student",
+    "neonUserId": "860dc360-609f-4b7d-9e70-ec93fe6414d3",
+    "invitedAt": "2026-08-31T10:00:00.000Z"
+  },
   "inviteSent": true
 }
 ```
 
-If the user is created but the magic-link request fails, the response is still **201** with `inviteSent: false`. **409** if that email already exists. **401** if the admin key is missing or wrong.
+If the user is created but the magic-link request fails, the response is still **201** with `inviteSent: false`. **404** if the student does not exist. **409** if that email already has a Neon Auth user, or the student is already linked. **401** if the admin key is missing or wrong.
+
+Run migrations so `students.neon_user_id` exists:
+
+```bash
+npm run migrate
+```
 
 ### Enable Resend
 
@@ -154,6 +168,7 @@ src/
   lib/neon-auth.ts       Management API create-user and magic-link trigger
   lib/neon-webhook.ts    Webhook signature verification
   lib/email.ts           Resend send helper
+  lib/students.ts        Student records in Neon Database
   lib/db.ts              Neon Database client
   lib/contentful.ts      Contentful Delivery API client
   lib/resend.ts          Resend client
@@ -163,7 +178,7 @@ src/
   index.ts               Node server (binds 0.0.0.0 for Render)
 ```
 
-`DATABASE_URL` and Contentful are optional until those features are used. Admin create-user needs `ADMIN_API_KEY`, Neon management vars, `LEARN_APP_URL`, and Resend vars.
+`DATABASE_URL` is required for `/admin/user/create`. Contentful is optional until those features are used. Admin create-user also needs `ADMIN_API_KEY`, Neon management vars, `LEARN_APP_URL`, and Resend vars.
 
 ## Deploy on Render
 
