@@ -194,6 +194,60 @@ Optional query params: `type`, `subject`, `ageGroup`. Omit a param (or pass empt
 
 **401** if the admin key is missing or wrong. **503** if Contentful is not configured.
 
+### `POST /admin/enroll/:studentId`
+
+Enrolls one student in one or more Contentful content entries. Requires the admin API key. `:studentId` is a single `students.id` UUID. Multiple content IDs go in the body, not the path.
+
+**Request**
+
+```
+POST /admin/enroll/3f1c0a8e-2b9d-4c11-9e4a-8a6b1d2c3e4f
+X-Admin-Api-Key: <ADMIN_API_KEY>
+Content-Type: application/json
+```
+
+```json
+{
+  "contentIds": ["1rTsR3YCoLYlMHFGd0greW", "anotherEntryId"]
+}
+```
+
+`contentIds` are Contentful `sys.id` values (the same as `entryId` from `GET /admin/content`). Send a one-element array to enroll in a single item.
+
+**201**
+
+```json
+{
+  "enrollments": [
+    {
+      "id": "9c2e1b44-0a1f-4d3c-8e7b-2a6d5c4b3a21",
+      "studentId": "3f1c0a8e-2b9d-4c11-9e4a-8a6b1d2c3e4f",
+      "contentId": "1rTsR3YCoLYlMHFGd0greW",
+      "status": "enrolled",
+      "progressStatus": "not_started",
+      "progress": {},
+      "enrolledAt": "2026-09-01T10:00:00.000Z",
+      "startedAt": null,
+      "completedAt": null,
+      "lastActivityAt": null,
+      "withdrawnAt": null,
+      "createdAt": "2026-09-01T10:00:00.000Z",
+      "updatedAt": "2026-09-01T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+Already-enrolled rows are left unchanged. A withdrawn enrollment for the same student and content is reactivated (`status` back to `enrolled`); `progress` is kept. Content metadata stays in Contentful; Neon stores `content_id` plus enrollment status and a JSON `progress` object (answers, completed sections, and so on).
+
+**401** if the admin key is missing or wrong. **404** if the student does not exist. **400** if `studentId` is not a UUID, the body is invalid, or a content ID is not a published Contentful `content` entry. **503** if the database or Contentful is not configured.
+
+Apply the schema before using this:
+
+```bash
+npm run migrate
+```
+
 ## Project structure
 
 ```
@@ -205,6 +259,7 @@ src/
   lib/neon-webhook.ts    Webhook signature verification
   lib/email.ts           Resend send helper
   lib/students.ts        Student records in Neon Database
+  lib/enrollments.ts     Student–content enrollments and progress
   lib/content.ts         Contentful content listing and filters
   lib/db.ts              Neon Database client
   lib/contentful.ts      Contentful Delivery API client
@@ -215,7 +270,7 @@ src/
   index.ts               Node server (binds 0.0.0.0 for Render)
 ```
 
-`DATABASE_URL` is required for `/admin/user/create`. Contentful (`CONTENTFUL_SPACE_ID`, `CONTENTFUL_ACCESS_TOKEN`) is required for `/admin/content`. Admin create-user also needs `ADMIN_API_KEY`, Neon management vars, `LEARN_APP_URL`, and Resend vars.
+`DATABASE_URL` is required for `/admin/user/create` and `/admin/enroll/:studentId`. Contentful (`CONTENTFUL_SPACE_ID`, `CONTENTFUL_ACCESS_TOKEN`) is required for `/admin/content` and enroll. Admin create-user also needs `ADMIN_API_KEY`, Neon management vars, `LEARN_APP_URL`, and Resend vars.
 
 ## Deploy on Render
 

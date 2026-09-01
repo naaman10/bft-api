@@ -13,7 +13,8 @@ import {
   getStudentById,
   linkStudentToNeonUser,
 } from "../lib/students.js";
-import { listContent } from "../lib/content.js";
+import { getMissingContentIds, listContent } from "../lib/content.js";
+import { enrollStudentInContent } from "../lib/enrollments.js";
 import type { AppEnv } from "../types.js";
 
 const createUserBody = z.object({
@@ -36,6 +37,10 @@ const contentQuery = z.object({
   type: optionalFilter,
   subject: optionalFilter,
   ageGroup: optionalFilter,
+});
+
+const enrollBody = z.object({
+  contentIds: z.array(z.string().trim().min(1)).min(1),
 });
 
 export const adminRoutes = new Hono<AppEnv>();
@@ -159,4 +164,64 @@ adminRoutes.get("/content", requireAdmin, async (c) => {
   }
 
   return c.json(await listContent(parsed.data));
+});
+
+adminRoutes.post("/enroll/:studentId", requireAdmin, async (c) => {
+  if (!env.DATABASE_URL) {
+    return c.json({ error: "Database is not configured." }, 503);
+  }
+
+  if (!env.CONTENTFUL_SPACE_ID || !env.CONTENTFUL_ACCESS_TOKEN) {
+    return c.json({ error: "Contentful is not configured." }, 503);
+  }
+
+  const studentId = z.string().uuid().safeParse(c.req.param("studentId"));
+
+  if (!studentId.success) {
+    return c.json({ error: "Invalid student id." }, 400);
+  }
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Invalid JSON body." }, 400);
+  }
+
+  const parsed = enrollBody.safeParse(body);
+
+  if (!parsed.success) {
+    return c.json(
+      {
+        error: "Invalid request body.",
+        details: parsed.error.issues.map((issue) => ({
+          path: issue.path.join("."),
+          message: issue.message,
+        })),
+      },
+      400
+    );
+  }
+
+  const missing = await getMissingContentIds(parsed.data.contentIds);
+
+  if (missing.length > 0) {
+    return c.json(
+      { error: "Unknown content IDs.", contentIds: missing },
+      400
+    );
+  }
+
+  try {
+    const enrollments = await enrollStudentInContent(
+      studentId.data,
+      parsed.data.contentIds
+    );
+    return c.json({ enrollments }, 201);
+  } catch (error) {
+    if (error instanceof StudentNotFoundError) {
+      return c.json({ error: "Student not found." }, 404);
+    }
+    throw error;
+  }
 });

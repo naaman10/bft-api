@@ -128,3 +128,22 @@ export async function listContent(
     items: items.filter((item) => matches(item, filters)),
   };
 }
+
+export async function getMissingContentIds(
+  contentIds: string[]
+): Promise<string[]> {
+  if (contentIds.length === 0) {
+    return [];
+  }
+
+  const client = getContentful();
+  const page = await client.getEntries({
+    content_type: CONTENT_TYPE,
+    "sys.id[in]": contentIds,
+    limit: contentIds.length,
+    select: ["sys.id"],
+  });
+  const found = new Set(page.items.map((entry) => entry.sys.id));
+
+  return contentIds.filter((id) => !found.has(id));
+}
