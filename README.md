@@ -44,7 +44,7 @@ Backend for the BFT Learn student portal. This service validates Neon Auth sessi
 
 ### `GET /learn/user`
 
-Returns the authenticated user's details.
+Returns the authenticated user's details and their assigned enrollments.
 
 **Request**
 
@@ -64,9 +64,19 @@ Authorization: Bearer <neon-auth-jwt>
     "emailVerified": true,
     "image": null,
     "role": "authenticated"
-  }
+  },
+  "enrollments": [
+    {
+      "name": "Paper 1 Maths Mock Test",
+      "status": "enrolled",
+      "progressStatus": "not_started",
+      "enrolledAt": "2026-09-01T10:00:00.000Z"
+    }
+  ]
 }
 ```
+
+`enrollments` is the student's `enrolled` rows (withdrawn is omitted). `name` comes from the Contentful content entry for `content_id`. `status`, `progressStatus`, and `enrolledAt` come from `enrollments`. If the student is not linked, the database is unset, or Contentful cannot resolve a name, the array is empty or `name` is `""`.
 
 **401** — missing, expired, or invalid token
 
@@ -270,7 +280,7 @@ src/
   index.ts               Node server (binds 0.0.0.0 for Render)
 ```
 
-`DATABASE_URL` is required for `/admin/user/create` and `/admin/enroll/:studentId`. Contentful (`CONTENTFUL_SPACE_ID`, `CONTENTFUL_ACCESS_TOKEN`) is required for `/admin/content` and enroll. Admin create-user also needs `ADMIN_API_KEY`, Neon management vars, `LEARN_APP_URL`, and Resend vars.
+`DATABASE_URL` is required for `/admin/user/create` and `/admin/enroll/:studentId`. `/learn/user` enrollments also need `DATABASE_URL` (and Contentful for names); without them the session still returns **200** with `enrollments: []`. Contentful (`CONTENTFUL_SPACE_ID`, `CONTENTFUL_ACCESS_TOKEN`) is required for `/admin/content` and enroll. Admin create-user also needs `ADMIN_API_KEY`, Neon management vars, `LEARN_APP_URL`, and Resend vars.
 
 ## Deploy on Render
 

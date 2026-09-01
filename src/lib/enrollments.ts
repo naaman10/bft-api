@@ -1,5 +1,11 @@
+import { env } from "../config/env.js";
+import { getContentNamesByIds } from "./content.js";
 import { getDb } from "./db.js";
-import { StudentNotFoundError, getStudentById } from "./students.js";
+import {
+  StudentNotFoundError,
+  getStudentById,
+  getStudentByNeonUserId,
+} from "./students.js";
 
 export type EnrollmentStatus = "enrolled" | "withdrawn";
 export type ProgressStatus = "not_started" | "in_progress" | "completed";
@@ -18,6 +24,13 @@ export type Enrollment = {
   withdrawnAt: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type LearnEnrollment = {
+  name: string;
+  status: EnrollmentStatus;
+  progressStatus: ProgressStatus;
+  enrolledAt: string;
 };
 
 type EnrollmentRow = {
@@ -150,4 +163,62 @@ export async function enrollStudentInContent(
   `;
 
   return (rows as EnrollmentRow[]).map(toEnrollment);
+}
+
+type AssignedEnrollmentRow = {
+  content_id: string;
+  status: EnrollmentStatus;
+  progress_status: ProgressStatus;
+  enrolled_at: string | Date;
+};
+
+export async function listLearnEnrollmentsForNeonUser(
+  neonUserId: string
+): Promise<LearnEnrollment[]> {
+  if (!env.DATABASE_URL) {
+    return [];
+  }
+
+  let student;
+
+  try {
+    student = await getStudentByNeonUserId(neonUserId);
+  } catch (error) {
+    console.error(error);
+    return [];
+  }
+
+  if (!student) {
+    return [];
+  }
+
+  const sql = getDb();
+  const rows = (await sql`
+    SELECT content_id, status, progress_status, enrolled_at
+    FROM enrollments
+    WHERE student_id = ${student.id}::uuid
+      AND status = 'enrolled'
+    ORDER BY enrolled_at DESC
+  `) as AssignedEnrollmentRow[];
+
+  if (rows.length === 0) {
+    return [];
+  }
+
+  let names = new Map<string, string>();
+
+  if (env.CONTENTFUL_SPACE_ID && env.CONTENTFUL_ACCESS_TOKEN) {
+    try {
+      names = await getContentNamesByIds(rows.map((row) => row.content_id));
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  return rows.map((row) => ({
+    name: names.get(row.content_id) ?? "",
+    status: row.status,
+    progressStatus: row.progress_status,
+    enrolledAt: toIso(row.enrolled_at) ?? "",
+  }));
 }

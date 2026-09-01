@@ -56,6 +56,21 @@ export async function getStudentById(id: string): Promise<Student | null> {
   return row ? toStudent(row) : null;
 }
 
+export async function getStudentByNeonUserId(
+  neonUserId: string
+): Promise<Student | null> {
+  const sql = getDb();
+  const rows = await sql`
+    SELECT id, email, name, neon_user_id, invited_at
+    FROM students
+    WHERE neon_user_id = ${neonUserId}::uuid
+    LIMIT 1
+  `;
+
+  const row = rows[0] as StudentRow | undefined;
+  return row ? toStudent(row) : null;
+}
+
 export async function linkStudentToNeonUser(input: {
   studentId: string;
   neonUserId: string;

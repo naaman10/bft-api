@@ -147,3 +147,27 @@ export async function getMissingContentIds(
 
   return contentIds.filter((id) => !found.has(id));
 }
+
+export async function getContentNamesByIds(
+  contentIds: string[]
+): Promise<Map<string, string>> {
+  const names = new Map<string, string>();
+
+  if (contentIds.length === 0) {
+    return names;
+  }
+
+  const client = getContentful();
+  const page = await client.getEntries<ContentSkeleton>({
+    content_type: CONTENT_TYPE,
+    "sys.id[in]": contentIds,
+    limit: contentIds.length,
+    select: ["sys.id", "fields.name"],
+  });
+
+  for (const entry of page.items) {
+    names.set(entry.sys.id, asString(entry.fields.name));
+  }
+
+  return names;
+}
