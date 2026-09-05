@@ -2,6 +2,10 @@ import { env } from "../config/env.js";
 import { getContentNamesByIds } from "./content.js";
 import { getDb } from "./db.js";
 import {
+  parseProgress,
+  type EnrollmentProgress,
+} from "./progress.js";
+import {
   StudentNotFoundError,
   getStudentById,
   getStudentByNeonUserId,
@@ -16,7 +20,7 @@ export type Enrollment = {
   contentId: string;
   status: EnrollmentStatus;
   progressStatus: ProgressStatus;
-  progress: Record<string, unknown>;
+  progress: EnrollmentProgress;
   enrolledAt: string;
   startedAt: string | null;
   completedAt: string | null;
@@ -27,9 +31,18 @@ export type Enrollment = {
 };
 
 export type LearnEnrollment = {
+  contentId: string;
   name: string;
   status: EnrollmentStatus;
   progressStatus: ProgressStatus;
+  enrolledAt: string;
+};
+
+export type LearnContentEnrollment = {
+  contentId: string;
+  status: EnrollmentStatus;
+  progressStatus: ProgressStatus;
+  progress: EnrollmentProgress;
   enrolledAt: string;
 };
 
@@ -57,25 +70,6 @@ function toIso(value: string | Date | null): string | null {
   return value instanceof Date ? value.toISOString() : value;
 }
 
-function toProgress(value: unknown): Record<string, unknown> {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-
-  if (typeof value === "string") {
-    try {
-      const parsed: unknown = JSON.parse(value);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        return parsed as Record<string, unknown>;
-      }
-    } catch {
-      return {};
-    }
-  }
-
-  return {};
-}
-
 function toEnrollment(row: EnrollmentRow): Enrollment {
   return {
     id: row.id,
@@ -83,7 +77,7 @@ function toEnrollment(row: EnrollmentRow): Enrollment {
     contentId: row.content_id,
     status: row.status,
     progressStatus: row.progress_status,
-    progress: toProgress(row.progress),
+    progress: parseProgress(row.progress),
     enrolledAt: toIso(row.enrolled_at) ?? "",
     startedAt: toIso(row.started_at),
     completedAt: toIso(row.completed_at),
@@ -216,9 +210,64 @@ export async function listLearnEnrollmentsForNeonUser(
   }
 
   return rows.map((row) => ({
+    contentId: row.content_id,
     name: names.get(row.content_id) ?? "",
     status: row.status,
     progressStatus: row.progress_status,
     enrolledAt: toIso(row.enrolled_at) ?? "",
   }));
+}
+
+type LearnContentEnrollmentRow = {
+  content_id: string;
+  status: EnrollmentStatus;
+  progress_status: ProgressStatus;
+  progress: unknown;
+  enrolled_at: string | Date;
+};
+
+export async function getLearnEnrollmentForContent(
+  neonUserId: string,
+  contentId: string
+): Promise<LearnContentEnrollment | null> {
+  if (!env.DATABASE_URL) {
+    return null;
+  }
+
+  let student;
+
+  try {
+    student = await getStudentByNeonUserId(neonUserId);
+  } catch (error) {
+    console.error(error);
+    return null;
+  }
+
+  if (!student) {
+    return null;
+  }
+
+  const sql = getDb();
+  const rows = (await sql`
+    SELECT content_id, status, progress_status, progress, enrolled_at
+    FROM enrollments
+    WHERE student_id = ${student.id}::uuid
+      AND content_id = ${contentId}
+      AND status = 'enrolled'
+    LIMIT 1
+  `) as LearnContentEnrollmentRow[];
+
+  const row = rows[0];
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    contentId: row.content_id,
+    status: row.status,
+    progressStatus: row.progress_status,
+    progress: parseProgress(row.progress),
+    enrolledAt: toIso(row.enrolled_at) ?? "",
+  };
 }

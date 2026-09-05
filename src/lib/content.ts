@@ -11,6 +11,17 @@ export type ContentItem = {
   ageGroup: string;
 };
 
+export type ContentEntry = {
+  entryId: string;
+  name: string;
+  type: string;
+  subject: string;
+  ageGroup: string;
+  stage: string;
+  entryName: string;
+  fields: Record<string, unknown>;
+};
+
 export type ContentFilters = {
   type?: string;
   subject?: string;
@@ -31,6 +42,8 @@ type ContentFields = {
   type?: string;
   subject?: string;
   ageGroup?: string;
+  stage?: string;
+  entryName?: string;
 };
 
 type ContentSkeleton = {
@@ -170,4 +183,133 @@ export async function getContentNamesByIds(
   }
 
   return names;
+}
+
+const KNOWN_FIELD_IDS = new Set([
+  "name",
+  "type",
+  "subject",
+  "ageGroup",
+  "stage",
+  "entryName",
+]);
+
+function toJsonValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value === null || value === undefined) {
+    return value ?? null;
+  }
+
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => toJsonValue(item, seen));
+  }
+
+  if (typeof value !== "object") {
+    return null;
+  }
+
+  if (seen.has(value)) {
+    return null;
+  }
+
+  seen.add(value);
+  const record = value as Record<string, unknown>;
+  const sys = record.sys;
+
+  if (sys && typeof sys === "object") {
+    const sysRecord = sys as {
+      id?: string;
+      type?: string;
+      contentType?: { sys?: { id?: string } };
+    };
+
+    if (record.fields && typeof record.fields === "object") {
+      const serializedFields = toJsonValue(record.fields, seen);
+      return {
+        entryId: sysRecord.id ?? null,
+        type: sysRecord.type ?? null,
+        contentType: sysRecord.contentType?.sys?.id ?? null,
+        fields: serializedFields,
+      };
+    }
+  }
+
+  const out: Record<string, unknown> = {};
+
+  for (const [key, nested] of Object.entries(record)) {
+    if (typeof nested === "function") {
+      continue;
+    }
+
+    const serialized = toJsonValue(nested, seen);
+
+    if (serialized !== undefined) {
+      out[key] = serialized;
+    }
+  }
+
+  return out;
+}
+
+export async function getContentEntry(
+  entryId: string
+): Promise<ContentEntry | null> {
+  const id = entryId.trim();
+
+  if (!id) {
+    return null;
+  }
+
+  const client = getContentful();
+
+  try {
+    const entry = await client.getEntry<ContentSkeleton>(id, { include: 2 });
+
+    if (entry.sys.contentType?.sys.id !== CONTENT_TYPE) {
+      return null;
+    }
+
+    const extraFields: Record<string, unknown> = {};
+
+    for (const [key, value] of Object.entries(entry.fields)) {
+      if (KNOWN_FIELD_IDS.has(key)) {
+        continue;
+      }
+
+      extraFields[key] = toJsonValue(value);
+    }
+
+    return {
+      entryId: entry.sys.id,
+      name: asString(entry.fields.name),
+      type: asString(entry.fields.type),
+      subject: asString(entry.fields.subject),
+      ageGroup: asString(entry.fields.ageGroup),
+      stage: asString(entry.fields.stage),
+      entryName: asString(entry.fields.entryName),
+      fields: extraFields,
+    };
+  } catch (error) {
+    const status = (error as { sys?: { id?: string }; response?: { status?: number } })
+      .sys?.id;
+    const httpStatus = (error as { response?: { status?: number } }).response
+      ?.status;
+
+    if (status === "NotFound" || httpStatus === 404) {
+      return null;
+    }
+
+    throw error;
+  }
 }

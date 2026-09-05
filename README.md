@@ -67,6 +67,7 @@ Authorization: Bearer <neon-auth-jwt>
   },
   "enrollments": [
     {
+      "contentId": "1rTsR3YCoLYlMHFGd0greW",
       "name": "Paper 1 Maths Mock Test",
       "status": "enrolled",
       "progressStatus": "not_started",
@@ -76,7 +77,7 @@ Authorization: Bearer <neon-auth-jwt>
 }
 ```
 
-`enrollments` is the student's `enrolled` rows (withdrawn is omitted). `name` comes from the Contentful content entry for `content_id`. `status`, `progressStatus`, and `enrolledAt` come from `enrollments`. If the student is not linked, the database is unset, or Contentful cannot resolve a name, the array is empty or `name` is `""`.
+`enrollments` is the student's `enrolled` rows (withdrawn is omitted). `contentId` is the Contentful entry ID. `name` comes from that entry. `status`, `progressStatus`, and `enrolledAt` come from `enrollments`. If the student is not linked, the database is unset, or Contentful cannot resolve a name, the array is empty or `name` is `""`.
 
 **401** — missing, expired, or invalid token
 
@@ -93,6 +94,56 @@ From `bft-learn`:
 ```ts
 const session = await apiFetch("/learn/user");
 ```
+
+### `GET /learn/content/:id`
+
+Returns a published Contentful `content` entry and the authenticated student's progress for it. `:id` is the Contentful `sys.id`. The student is taken from the JWT (same as `/learn/user`).
+
+**Request**
+
+```
+GET /learn/content/1rTsR3YCoLYlMHFGd0greW
+Authorization: Bearer <neon-auth-jwt>
+```
+
+**200**
+
+```json
+{
+  "content": {
+    "entryId": "1rTsR3YCoLYlMHFGd0greW",
+    "name": "Paper 1 Maths Mock Test",
+    "type": "Lesson",
+    "subject": "Maths",
+    "ageGroup": "4-5",
+    "stage": "Key Stage 2",
+    "entryName": "Test - Maths Paper 1",
+    "fields": {}
+  },
+  "progressStatus": "not_started",
+  "progress": {
+    "version": 1,
+    "items": {}
+  }
+}
+```
+
+`progress` is stored on `enrollments.progress` (JSONB). Empty or invalid JSON becomes `{ "version": 1, "items": {} }`. Item keys are opaque IDs (a child Contentful entry ID or a stable Learn key). Each item:
+
+```json
+{
+  "status": "not_started",
+  "answer": "optional",
+  "score": 0,
+  "attempts": 1,
+  "completedAt": "2026-09-05T10:00:00.000Z",
+  "updatedAt": "2026-09-05T10:00:00.000Z"
+}
+```
+
+An optional `currentItemId` on `progress` is the resume position. Saving progress is a later endpoint.
+
+**401** if the JWT is missing or invalid. **403** if the student is not enrolled in that content. **404** if the entry is not a published `content` entry. **503** if Contentful or the database is not configured.
 
 ## Create a user (admin)
 
@@ -270,6 +321,7 @@ src/
   lib/email.ts           Resend send helper
   lib/students.ts        Student records in Neon Database
   lib/enrollments.ts     Student–content enrollments and progress
+  lib/progress.ts        Enrollment progress JSON schema
   lib/content.ts         Contentful content listing and filters
   lib/db.ts              Neon Database client
   lib/contentful.ts      Contentful Delivery API client
@@ -280,7 +332,7 @@ src/
   index.ts               Node server (binds 0.0.0.0 for Render)
 ```
 
-`DATABASE_URL` is required for `/admin/user/create` and `/admin/enroll/:studentId`. `/learn/user` enrollments also need `DATABASE_URL` (and Contentful for names); without them the session still returns **200** with `enrollments: []`. Contentful (`CONTENTFUL_SPACE_ID`, `CONTENTFUL_ACCESS_TOKEN`) is required for `/admin/content` and enroll. Admin create-user also needs `ADMIN_API_KEY`, Neon management vars, `LEARN_APP_URL`, and Resend vars.
+`DATABASE_URL` is required for `/admin/user/create`, `/admin/enroll/:studentId`, and `/learn/content/:id`. `/learn/user` enrollments also need `DATABASE_URL` (and Contentful for names); without them the session still returns **200** with `enrollments: []`. Contentful (`CONTENTFUL_SPACE_ID`, `CONTENTFUL_ACCESS_TOKEN`) is required for `/admin/content`, enroll, and `/learn/content/:id`. Admin create-user also needs `ADMIN_API_KEY`, Neon management vars, `LEARN_APP_URL`, and Resend vars.
 
 ## Deploy on Render
 
