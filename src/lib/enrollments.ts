@@ -271,3 +271,46 @@ export async function getLearnEnrollmentForContent(
     enrolledAt: toIso(row.enrolled_at) ?? "",
   };
 }
+
+
+export class ProgressSaveError extends Error {
+  constructor(public readonly status: 403 | 409, message: string) { super(message); }
+}
+
+export async function saveLearnProgress(neonUserId: string, contentId: string,
+  patch: import("./progress.js").ProgressPatch) {
+  const { mergeProgress } = await import("./progress.js");
+  const sql = getDb();
+  // Compare-and-swap avoids losing another tab's changes. The UPDATE rechecks
+  // enrollment and completion so a concurrent submission cannot unlock editing.
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const rows = await sql`
+      SELECT e.id, e.progress, e.progress_status, e.status
+      FROM enrollments e JOIN students s ON s.id = e.student_id
+      WHERE s.neon_user_id = ${neonUserId}::uuid AND e.content_id = ${contentId}
+    `;
+    const row = rows[0];
+    if (!row || row.status !== "enrolled")
+      throw new ProgressSaveError(403, "Not enrolled in this content.");
+    if (row.progress_status === "completed")
+      throw new ProgressSaveError(409, "Completed enrollment progress cannot be changed.");
+    const progress = mergeProgress(row.progress, patch, new Date().toISOString());
+    const updated = await sql`
+      UPDATE enrollments SET progress = ${JSON.stringify(progress)}::jsonb,
+        progress_status = ${patch.action === "complete" ? "completed" : "in_progress"},
+        completed_at = CASE WHEN ${patch.action === "complete"} THEN NOW() ELSE completed_at END,
+        started_at = COALESCE(started_at, NOW()),
+        last_activity_at = NOW(), updated_at = NOW()
+      WHERE id = ${row.id}::uuid AND status = 'enrolled'
+        AND progress_status <> 'completed'
+        AND progress = ${JSON.stringify(row.progress)}::jsonb
+      RETURNING progress, progress_status, completed_at
+    `;
+    if (updated[0]) return {
+      progressStatus: updated[0].progress_status,
+      completedAt: toIso(updated[0].completed_at as string | Date | null),
+      progress: parseProgress(updated[0].progress),
+    };
+  }
+  throw new ProgressSaveError(409, "Progress changed concurrently. Please retry.");
+}

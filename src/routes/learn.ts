@@ -1,3 +1,5 @@
+import { progressPatchSchema } from "../lib/progress.js";
+import { saveLearnProgress, ProgressSaveError } from "../lib/enrollments.js";
 import { Hono } from "hono";
 import { env } from "../config/env.js";
 import { requireAuth } from "../middleware/require-auth.js";
@@ -57,4 +59,20 @@ learnRoutes.get("/content/:id", requireAuth, async (c) => {
     progressStatus: enrollment.progressStatus,
     progress: enrollment.progress,
   });
+});
+
+
+learnRoutes.patch("/content/:id/progress", requireAuth, async (c) => {
+  if (!env.DATABASE_URL) return c.json({ error: "Database is not configured." }, 503);
+  let body: unknown;
+  try { body = await c.req.json(); }
+  catch { return c.json({ error: "Invalid JSON body." }, 400); }
+  const parsed = progressPatchSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: "Invalid progress changes.", details: parsed.error.issues }, 400);
+  try {
+    return c.json(await saveLearnProgress(c.get("user").id, c.req.param("id"), parsed.data));
+  } catch (error) {
+    if (error instanceof ProgressSaveError) return c.json({ error: error.message }, error.status);
+    throw error;
+  }
 });

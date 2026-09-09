@@ -346,3 +346,48 @@ Create a **Web Service** from this repo, or use `render.yaml`.
 | Health check | `/health` |
 
 Render injects `PORT`. Set `FRONTEND_URL` to the live Learn (and admin) origins, comma-separated. After deploy, point the Neon Auth webhook at `https://<your-service>.onrender.com/webhooks/neon-auth`. Copy the remaining secrets from `.env.example`.
+
+
+### PATCH /learn/content/:id/progress
+
+Send the same Bearer JWT as `/learn/user`; identity comes from the token.
+Requires an enrolled student. No admin key or client user ID is accepted.
+
+```json
+{
+  "currentItemId": "question-entry-id",
+  "items": {
+    "question-entry-id": { "answer": "My answer", "status": "completed" }
+  }
+}
+```
+
+Both fields are optional, but at least one change is required. Item IDs are stable
+question or section IDs, matching the existing v1 progress map. Answers are JSON
+values; sending an answer replaces its previous value, including objects/arrays.
+Omitted answers and items are preserved. Timestamps are server-generated.
+Scores, attempts, user IDs, and timestamps cannot be supplied by the client.
+The default save action sets enrollment progress to `in_progress`, records first activity and latest
+activity, and returns **200** `{ progressStatus, progress }`.
+An item being completed does not complete the entire enrollment.
+
+**400** invalid JSON/changes; **401** invalid JWT; **403** not enrolled;
+**409** enrollment completed or conflicting concurrent changes (retry the latter);
+**503** database not configured. No new migration is required.
+
+
+To complete an enrollment, use the same authenticated PATCH endpoint:
+
+```json
+{ "action": "complete" }
+```
+
+Optional `items` and `currentItemId` may accompany `action: "complete"` to save
+final changes. The API merges those changes and sets `progress_status` to
+`completed` and `completed_at` to server time in one guarded update. It also
+updates activity timestamps and initializes `started_at` if unset. Enrollment
+`status` stays `enrolled`; completion does not award points or assess answers.
+The response includes `progressStatus`, `progress`, and `completedAt` (null on
+ordinary saves). Subsequent saves or completion requests return 409, preserving
+all saved values. Omitting `action`, or using `action: "save"`, retains normal
+save behaviour. An empty save request is rejected.
