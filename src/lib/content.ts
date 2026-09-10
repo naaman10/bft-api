@@ -1,3 +1,5 @@
+import type { EntryFieldTypes } from "contentful";
+import { redactAssessmentAnswers } from "./content-assessment.js";
 import { getContentful } from "./contentful.js";
 
 const CONTENT_TYPE = "content";
@@ -19,6 +21,8 @@ export type ContentEntry = {
   ageGroup: string;
   stage: string;
   entryName: string;
+  requiresAssessment: boolean;
+  time?: number;
   fields: Record<string, unknown>;
 };
 
@@ -38,6 +42,8 @@ export type ContentList = {
 };
 
 type ContentFields = {
+  requiresAssessment?: EntryFieldTypes.Boolean;
+  time?: EntryFieldTypes.Integer;
   name?: string;
   type?: string;
   subject?: string;
@@ -82,7 +88,7 @@ function matches(
 
 function mapEntry(entry: {
   sys: { id: string };
-  fields: ContentFields;
+  fields: { name?: unknown; type?: unknown; subject?: unknown; ageGroup?: unknown };
 }): ContentItem {
   return {
     name: asString(entry.fields.name),
@@ -298,7 +304,12 @@ export async function getContentEntry(
       ageGroup: asString(entry.fields.ageGroup),
       stage: asString(entry.fields.stage),
       entryName: asString(entry.fields.entryName),
-      fields: extraFields,
+      requiresAssessment: entry.fields.requiresAssessment === true,
+      ...(typeof entry.fields.time === "number" && Number.isInteger(entry.fields.time)
+        ? { time: entry.fields.time } : {}),
+      fields: entry.fields.requiresAssessment === true
+        ? redactAssessmentAnswers(extraFields) as Record<string, unknown>
+        : extraFields,
     };
   } catch (error) {
     const status = (error as { sys?: { id?: string }; response?: { status?: number } })

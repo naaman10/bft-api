@@ -391,3 +391,14 @@ The response includes `progressStatus`, `progress`, and `completedAt` (null on
 ordinary saves). Subsequent saves or completion requests return 409, preserving
 all saved values. Omitting `action`, or using `action: "save"`, retains normal
 save behaviour. An empty save request is rejected.
+
+
+`GET /learn/content/:id` exposes `content.requiresAssessment` (boolean) and
+`content.time` when the parent Contentful entry supplies an integer. Time is
+returned unchanged, without unit conversion or starting/enforcing a timer.
+Existing copies in `content.fields` are retained for compatibility.
+When assessment is required, linked `question` and `questionMultipleChoice`
+entries omit their correct-answer `fields.answer`, including nested questions.
+Student answers in `progress` are preserved. Question `points` remain available
+as possible marks; neither this GET nor progress saving awards points. Assessment
+and points allocation remain separate future functionality.
