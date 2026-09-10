@@ -43,7 +43,7 @@ export async function sendCompletionNotification(input: {
     template: {
       id: "notifications",
       variables: {
-        emai_subject: "A pupil has completed an assignment",
+        email_subject: "A pupil has completed an assignment",
         email_recipient: "Ellie",
         email_body: `${input.studentName} (${input.studentEmail}) has completed the assignment "${input.contentName}".`,
         email_image: "https://res.cloudinary.com/njh101010/image/upload/v1773761306/brighterfutures/bft-logo-no-text-sun.png",
