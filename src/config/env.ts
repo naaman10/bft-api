@@ -31,6 +31,7 @@ const envSchema = z.object({
   CONTENTFUL_SPACE_ID: optionalString,
   CONTENTFUL_ACCESS_TOKEN: optionalString,
   CONTENTFUL_ENVIRONMENT: z.string().default("master"),
+  COMPLETION_NOTIFICATION_EMAIL: z.preprocess(emptyToUndefined, z.string().email().optional()),
   RESEND_API_KEY: optionalString,
   RESEND_FROM_EMAIL: optionalString,
 });

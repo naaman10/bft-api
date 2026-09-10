@@ -402,3 +402,15 @@ entries omit their correct-answer `fields.answer`, including nested questions.
 Student answers in `progress` are preserved. Question `points` remain available
 as possible marks; neither this GET nor progress saving awards points. Assessment
 and points allocation remain separate future functionality.
+
+
+Completion notifications: set `COMPLETION_NOTIFICATION_EMAIL` to Ellie's email
+address, alongside `RESEND_API_KEY` and `RESEND_FROM_EMAIL`. Publish Resend's
+`notifications` template with `emai_subject`, `email_recipient`, `email_body`,
+and `email_image`. The subject variable spelling follows the requested contract.
+A successful transition to completed sends the pupil's name/email and assignment
+name. Ordinary saves and rejected repeat completion requests do not send mail.
+Completion responses include `notificationSent`; false means completion succeeded
+but notification delivery failed. Failures are logged, and currently require manual
+follow-up; there is no background retry worker. Resend acceptance is not proof of
+inbox delivery. No email is sent during local verification.

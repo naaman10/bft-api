@@ -1,3 +1,4 @@
+import { sendCompletionNotification } from "./email.js";
 import { env } from "../config/env.js";
 import { getContentNamesByIds } from "./content.js";
 import { getDb } from "./db.js";
@@ -285,7 +286,7 @@ export async function saveLearnProgress(neonUserId: string, contentId: string,
   // enrollment and completion so a concurrent submission cannot unlock editing.
   for (let attempt = 0; attempt < 4; attempt++) {
     const rows = await sql`
-      SELECT e.id, e.progress, e.progress_status, e.status
+      SELECT e.id, e.progress, e.progress_status, e.status, s.name AS student_name, s.email AS student_email
       FROM enrollments e JOIN students s ON s.id = e.student_id
       WHERE s.neon_user_id = ${neonUserId}::uuid AND e.content_id = ${contentId}
     `;
@@ -306,11 +307,32 @@ export async function saveLearnProgress(neonUserId: string, contentId: string,
         AND progress = ${JSON.stringify(row.progress)}::jsonb
       RETURNING progress, progress_status, completed_at
     `;
-    if (updated[0]) return {
-      progressStatus: updated[0].progress_status,
-      completedAt: toIso(updated[0].completed_at as string | Date | null),
-      progress: parseProgress(updated[0].progress),
-    };
+    if (updated[0]) {
+      let notificationSent: boolean | undefined;
+      if (patch.action === "complete") {
+        try {
+          const names = await getContentNamesByIds([contentId]);
+          await sendCompletionNotification({
+            enrollmentId: String(row.id),
+            completedAt: toIso(updated[0].completed_at as string | Date)!,
+            studentName: String(row.student_name),
+            studentEmail: String(row.student_email),
+            contentName: names.get(contentId) || contentId,
+          });
+          notificationSent = true;
+        } catch {
+          // Completion has already committed. Do not ask the pupil to submit again.
+          console.error("Completion notification failed for enrollment", row.id);
+          notificationSent = false;
+        }
+      }
+      return {
+        ...(notificationSent !== undefined ? { notificationSent } : {}),
+        progressStatus: updated[0].progress_status,
+        completedAt: toIso(updated[0].completed_at as string | Date | null),
+        progress: parseProgress(updated[0].progress),
+      };
+    }
   }
   throw new ProgressSaveError(409, "Progress changed concurrently. Please retry.");
 }

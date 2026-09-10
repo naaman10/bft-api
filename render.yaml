@@ -36,3 +36,5 @@ services:
         sync: false
       - key: RESEND_FROM_EMAIL
         sync: false
+      - key: COMPLETION_NOTIFICATION_EMAIL
+        value: ellie@brighterfuturestutoring.com
