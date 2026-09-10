@@ -41,7 +41,7 @@ export async function sendCompletionNotification(input: {
     from: env.RESEND_FROM_EMAIL,
     to: env.COMPLETION_NOTIFICATION_EMAIL,
     template: {
-      id: "notifications",
+      id: "notification",
       variables: {
         email_subject: "A pupil has completed an assignment",
         email_recipient: "Ellie",

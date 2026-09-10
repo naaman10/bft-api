@@ -310,14 +310,22 @@ export async function saveLearnProgress(neonUserId: string, contentId: string,
     if (updated[0]) {
       let notificationSent: boolean | undefined;
       if (patch.action === "complete") {
+        console.info("Completion notification triggered", { enrollmentId: row.id, contentId });
         try {
-          const names = await getContentNamesByIds([contentId]);
+          let contentName = contentId;
+          try {
+            const names = await getContentNamesByIds([contentId]);
+            contentName = names.get(contentId) || contentId;
+          } catch {
+            // A metadata outage must not prevent notifying the tutor.
+            console.warn("Completion notification content lookup failed; using content ID", { enrollmentId: row.id, contentId });
+          }
           await sendCompletionNotification({
             enrollmentId: String(row.id),
             completedAt: toIso(updated[0].completed_at as string | Date)!,
             studentName: String(row.student_name),
             studentEmail: String(row.student_email),
-            contentName: names.get(contentId) || contentId,
+            contentName,
           });
           notificationSent = true;
         } catch {

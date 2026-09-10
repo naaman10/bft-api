@@ -406,7 +406,7 @@ and points allocation remain separate future functionality.
 
 Completion notifications: set `COMPLETION_NOTIFICATION_EMAIL` to Ellie's email
 address, alongside `RESEND_API_KEY` and `RESEND_FROM_EMAIL`. Publish Resend's
-`notifications` template with `email_subject`, `email_recipient`, `email_body`,
+`notification` template with `email_subject`, `email_recipient`, `email_body`,
 and `email_image`.
 A successful transition to completed sends the pupil's name/email and assignment
 name. Ordinary saves and rejected repeat completion requests do not send mail.
