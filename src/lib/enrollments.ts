@@ -1,7 +1,12 @@
 import { sendCompletionNotification } from "./email.js";
 import { env } from "../config/env.js";
-import { getContentNamesByIds } from "./content.js";
+import {
+  getContentMarkingScheme,
+  getContentNamesByIds,
+  type ContentMarkingScheme,
+} from "./content.js";
 import { getDb } from "./db.js";
+import { calculatePointAwards, type PointAward } from "./points.js";
 import {
   parseProgress,
   type EnrollmentProgress,
@@ -275,13 +280,51 @@ export async function getLearnEnrollmentForContent(
 
 
 export class ProgressSaveError extends Error {
-  constructor(public readonly status: 403 | 409, message: string) { super(message); }
+  constructor(public readonly status: 403 | 404 | 409, message: string) { super(message); }
+}
+
+type SavedPointAwardRow = {
+  question_id: string;
+  points_earned: number;
+  points_available: number;
+};
+
+function parseSavedPointAwards(value: unknown): PointAward[] {
+  let parsed = value;
+
+  if (typeof value === "string") {
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      return [];
+    }
+  }
+
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+
+  return (parsed as SavedPointAwardRow[]).map((row) => ({
+    questionId: row.question_id,
+    pointsEarned: Number(row.points_earned),
+    pointsAvailable: Number(row.points_available),
+  }));
 }
 
 export async function saveLearnProgress(neonUserId: string, contentId: string,
   patch: import("./progress.js").ProgressPatch) {
   const { mergeProgress } = await import("./progress.js");
   const sql = getDb();
+  let markingScheme: ContentMarkingScheme | null = null;
+
+  if (patch.action === "complete") {
+    markingScheme = await getContentMarkingScheme(contentId);
+
+    if (!markingScheme) {
+      throw new ProgressSaveError(404, "Content not found.");
+    }
+  }
+
   // Compare-and-swap avoids losing another tab's changes. The UPDATE rechecks
   // enrollment and completion so a concurrent submission cannot unlock editing.
   for (let attempt = 0; attempt < 4; attempt++) {
@@ -296,16 +339,65 @@ export async function saveLearnProgress(neonUserId: string, contentId: string,
     if (row.progress_status === "completed")
       throw new ProgressSaveError(409, "Completed enrollment progress cannot be changed.");
     const progress = mergeProgress(row.progress, patch, new Date().toISOString());
+    const pointAwards =
+      patch.action === "complete" && markingScheme && !markingScheme.requiresAssessment
+        ? calculatePointAwards(progress, markingScheme.questions)
+        : [];
+    const questionIds = pointAwards.map((award) => award.questionId);
+    const pointsEarned = pointAwards.map((award) => award.pointsEarned);
+    const pointsAvailable = pointAwards.map((award) => award.pointsAvailable);
     const updated = await sql`
-      UPDATE enrollments SET progress = ${JSON.stringify(progress)}::jsonb,
-        progress_status = ${patch.action === "complete" ? "completed" : "in_progress"},
-        completed_at = CASE WHEN ${patch.action === "complete"} THEN NOW() ELSE completed_at END,
-        started_at = COALESCE(started_at, NOW()),
-        last_activity_at = NOW(), updated_at = NOW()
-      WHERE id = ${row.id}::uuid AND status = 'enrolled'
-        AND progress_status <> 'completed'
-        AND progress = ${JSON.stringify(row.progress)}::jsonb
-      RETURNING progress, progress_status, completed_at
+      WITH updated_enrollment AS (
+        UPDATE enrollments
+        SET
+          progress = ${JSON.stringify(progress)}::jsonb,
+          progress_status = ${patch.action === "complete" ? "completed" : "in_progress"},
+          completed_at = CASE
+            WHEN ${patch.action === "complete"} THEN NOW()
+            ELSE completed_at
+          END,
+          started_at = COALESCE(started_at, NOW()),
+          last_activity_at = NOW(),
+          updated_at = NOW()
+        WHERE id = ${row.id}::uuid
+          AND status = 'enrolled'
+          AND progress_status <> 'completed'
+          AND progress = ${JSON.stringify(row.progress)}::jsonb
+        RETURNING student_id, progress, progress_status, completed_at
+      ), inserted_points AS (
+        INSERT INTO points (
+          student_id,
+          content_id,
+          question_id,
+          points_earned,
+          points_available,
+          source
+        )
+        SELECT
+          updated_enrollment.student_id,
+          ${contentId},
+          award.question_id,
+          award.points_earned,
+          award.points_available,
+          'automatic'
+        FROM updated_enrollment
+        CROSS JOIN unnest(
+          ${questionIds}::text[],
+          ${pointsEarned}::integer[],
+          ${pointsAvailable}::integer[]
+        ) AS award(question_id, points_earned, points_available)
+        ON CONFLICT (student_id, question_id) DO NOTHING
+        RETURNING question_id, points_earned, points_available
+      )
+      SELECT
+        updated_enrollment.progress,
+        updated_enrollment.progress_status,
+        updated_enrollment.completed_at,
+        COALESCE(
+          (SELECT jsonb_agg(to_jsonb(inserted_points)) FROM inserted_points),
+          '[]'::jsonb
+        ) AS points_awarded
+      FROM updated_enrollment
     `;
     if (updated[0]) {
       let notificationSent: boolean | undefined;
@@ -313,12 +405,19 @@ export async function saveLearnProgress(neonUserId: string, contentId: string,
         console.info("Completion notification triggered", { enrollmentId: row.id, contentId });
         try {
           let contentName = contentId;
-          try {
-            const names = await getContentNamesByIds([contentId]);
-            contentName = names.get(contentId) || contentId;
-          } catch {
-            // A metadata outage must not prevent notifying the tutor.
-            console.warn("Completion notification content lookup failed; using content ID", { enrollmentId: row.id, contentId });
+          if (markingScheme) {
+            contentName = markingScheme.contentName;
+          } else {
+            try {
+              const names = await getContentNamesByIds([contentId]);
+              contentName = names.get(contentId) || contentId;
+            } catch {
+              // A metadata outage must not prevent notifying the tutor.
+              console.warn(
+                "Completion notification content lookup failed; using content ID",
+                { enrollmentId: row.id, contentId }
+              );
+            }
           }
           await sendCompletionNotification({
             enrollmentId: String(row.id),
@@ -336,6 +435,12 @@ export async function saveLearnProgress(neonUserId: string, contentId: string,
       }
       return {
         ...(notificationSent !== undefined ? { notificationSent } : {}),
+        ...(patch.action === "complete"
+          ? {
+              assessmentRequired: markingScheme?.requiresAssessment ?? false,
+              pointsAwarded: parseSavedPointAwards(updated[0].points_awarded),
+            }
+          : {}),
         progressStatus: updated[0].progress_status,
         completedAt: toIso(updated[0].completed_at as string | Date | null),
         progress: parseProgress(updated[0].progress),

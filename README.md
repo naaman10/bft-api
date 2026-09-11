@@ -386,7 +386,8 @@ Optional `items` and `currentItemId` may accompany `action: "complete"` to save
 final changes. The API merges those changes and sets `progress_status` to
 `completed` and `completed_at` to server time in one guarded update. It also
 updates activity timestamps and initializes `started_at` if unset. Enrollment
-`status` stays `enrolled`; completion does not award points or assess answers.
+`status` stays `enrolled`; completion may allocate automatic points as described
+below.
 The response includes `progressStatus`, `progress`, and `completedAt` (null on
 ordinary saves). Subsequent saves or completion requests return 409, preserving
 all saved values. Omitting `action`, or using `action: "save"`, retains normal
@@ -397,11 +398,11 @@ save behaviour. An empty save request is rejected.
 `content.time` when the parent Contentful entry supplies an integer. Time is
 returned unchanged, without unit conversion or starting/enforcing a timer.
 Existing copies in `content.fields` are retained for compatibility.
-When assessment is required, linked `question` and `questionMultipleChoice`
-entries omit their correct-answer `fields.answer`, including nested questions.
+Linked `question` and `questionMultipleChoice` entries always omit their
+correct-answer `fields.answer`, including nested questions. Correct answers are
+kept server-side for automatic marking.
 Student answers in `progress` are preserved. Question `points` remain available
-as possible marks; neither this GET nor progress saving awards points. Assessment
-and points allocation remain separate future functionality.
+as possible marks; the GET endpoint never awards points.
 
 
 Completion notifications: set `COMPLETION_NOTIFICATION_EMAIL` to Ellie's email
@@ -414,3 +415,40 @@ Completion responses include `notificationSent`; false means completion succeede
 but notification delivery failed. Failures are logged, and currently require manual
 follow-up; there is no background retry worker. Resend acceptance is not proof of
 inbox delivery. No email is sent during local verification.
+
+## Points allocation
+
+Run `npm run migrate` after deploying this change to create the `points` table.
+The table stores positive awards only and relates each award to a student,
+parent Contentful entry, and question. `UNIQUE (student_id, question_id)` prevents
+the same question awarding points to the same pupil more than once, including
+when a question is reused by another content entry.
+
+Ordinary progress saves do not allocate points. When
+`PATCH /learn/content/:id/progress` receives `action: "complete"`, the API loads
+the authoritative questions from Contentful and evaluates the final saved
+answers. If the parent has `requiresAssessment: true`, it creates no points
+rows. Otherwise, each completed, correct question with a positive integer
+`points` value creates an automatic award. Incorrect, unanswered, and
+in-progress questions create no row. Existing awards are left unchanged.
+
+Text answers are trimmed and compared without case sensitivity. A numeric
+Contentful answer also accepts its equivalent numeric string. The completion
+response adds:
+
+```json
+{
+  "assessmentRequired": false,
+  "pointsAwarded": [
+    {
+      "questionId": "question-entry-id",
+      "pointsEarned": 2,
+      "pointsAvailable": 2
+    }
+  ]
+}
+```
+
+`pointsAwarded` contains rows created by that request. It is empty when answers
+are incorrect, assessment is required, or an award already exists. The client
+cannot submit points, correct answers, or marking results.

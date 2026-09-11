@@ -1,6 +1,7 @@
 import type { EntryFieldTypes } from "contentful";
 import { redactAssessmentAnswers } from "./content-assessment.js";
 import { getContentful } from "./contentful.js";
+import type { MarkingQuestion } from "./points.js";
 
 const CONTENT_TYPE = "content";
 const PAGE_SIZE = 1000;
@@ -24,6 +25,13 @@ export type ContentEntry = {
   requiresAssessment: boolean;
   time?: number;
   fields: Record<string, unknown>;
+};
+
+export type ContentMarkingScheme = {
+  contentId: string;
+  contentName: string;
+  requiresAssessment: boolean;
+  questions: MarkingQuestion[];
 };
 
 export type ContentFilters = {
@@ -268,6 +276,97 @@ function toJsonValue(value: unknown, seen = new WeakSet<object>()): unknown {
   return out;
 }
 
+function collectMarkingQuestions(
+  value: unknown,
+  questions: MarkingQuestion[],
+  seen = new WeakSet<object>()
+): void {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectMarkingQuestions(item, questions, seen);
+    }
+    return;
+  }
+
+  if (!value || typeof value !== "object" || seen.has(value)) {
+    return;
+  }
+
+  seen.add(value);
+  const record = value as Record<string, unknown>;
+  const sys = record.sys as
+    | { id?: string; contentType?: { sys?: { id?: string } } }
+    | undefined;
+  const fields = record.fields as Record<string, unknown> | undefined;
+  const contentType = sys?.contentType?.sys?.id;
+
+  if (
+    fields &&
+    sys?.id &&
+    (contentType === "question" || contentType === "questionMultipleChoice")
+  ) {
+    const points = fields.points;
+
+    if (
+      fields.answer !== undefined &&
+      typeof points === "number" &&
+      Number.isInteger(points) &&
+      points > 0
+    ) {
+      questions.push({
+        questionId: sys.id,
+        correctAnswer: fields.answer,
+        points,
+      });
+    }
+    return;
+  }
+
+  for (const child of Object.values(fields ?? record)) {
+    collectMarkingQuestions(child, questions, seen);
+  }
+}
+
+export async function getContentMarkingScheme(
+  entryId: string
+): Promise<ContentMarkingScheme | null> {
+  const id = entryId.trim();
+
+  if (!id) {
+    return null;
+  }
+
+  const client = getContentful();
+
+  try {
+    const entry = await client.getEntry<ContentSkeleton>(id, { include: 10 });
+
+    if (entry.sys.contentType?.sys.id !== CONTENT_TYPE) {
+      return null;
+    }
+
+    const questions: MarkingQuestion[] = [];
+    const fields = entry.fields as unknown as Record<string, unknown>;
+    collectMarkingQuestions(fields.sections, questions);
+
+    return {
+      contentId: entry.sys.id,
+      contentName: asString(entry.fields.name) || entry.sys.id,
+      requiresAssessment: entry.fields.requiresAssessment === true,
+      questions,
+    };
+  } catch (error) {
+    const notFound = (error as { sys?: { id?: string } }).sys?.id === "NotFound";
+    const status = (error as { response?: { status?: number } }).response?.status;
+
+    if (notFound || status === 404) {
+      return null;
+    }
+
+    throw error;
+  }
+}
+
 export async function getContentEntry(
   entryId: string
 ): Promise<ContentEntry | null> {
@@ -307,9 +406,8 @@ export async function getContentEntry(
       requiresAssessment: entry.fields.requiresAssessment === true,
       ...(typeof entry.fields.time === "number" && Number.isInteger(entry.fields.time)
         ? { time: entry.fields.time } : {}),
-      fields: entry.fields.requiresAssessment === true
-        ? redactAssessmentAnswers(extraFields) as Record<string, unknown>
-        : extraFields,
+      // Correct answers are always server-only, including auto-marked content.
+      fields: redactAssessmentAnswers(extraFields) as Record<string, unknown>,
     };
   } catch (error) {
     const status = (error as { sys?: { id?: string }; response?: { status?: number } })

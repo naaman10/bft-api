@@ -69,6 +69,12 @@ learnRoutes.patch("/content/:id/progress", requireAuth, async (c) => {
   catch { return c.json({ error: "Invalid JSON body." }, 400); }
   const parsed = progressPatchSchema.safeParse(body);
   if (!parsed.success) return c.json({ error: "Invalid progress changes.", details: parsed.error.issues }, 400);
+  if (
+    parsed.data.action === "complete" &&
+    (!env.CONTENTFUL_SPACE_ID || !env.CONTENTFUL_ACCESS_TOKEN)
+  ) {
+    return c.json({ error: "Contentful is not configured." }, 503);
+  }
   try {
     return c.json(await saveLearnProgress(c.get("user").id, c.req.param("id"), parsed.data));
   } catch (error) {
