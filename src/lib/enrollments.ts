@@ -66,6 +66,7 @@ export type LearnContentEnrollment = {
 export type AdminEnrollmentAssignment = {
   contentId: string;
   status: EnrollmentStatus;
+  progressStatus: ProgressStatus;
 };
 
 type EnrollmentRow = {
@@ -192,7 +193,7 @@ export async function listAdminEnrollmentsForStudent(
 
   const sql = getDb();
   const rows = await sql`
-    SELECT content_id, status
+    SELECT content_id, status, progress_status
     FROM enrollments
     WHERE student_id = ${studentId}::uuid
       AND status = 'enrolled'
@@ -202,6 +203,7 @@ export async function listAdminEnrollmentsForStudent(
   return rows.map((row) => ({
     contentId: String(row.content_id),
     status: row.status as EnrollmentStatus,
+    progressStatus: row.progress_status as ProgressStatus,
   }));
 }
 

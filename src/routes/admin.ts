@@ -202,6 +202,7 @@ adminRoutes.get("/content", requireAdmin, async (c) => {
         subject: item?.subject ?? "",
         ageGroup: item?.ageGroup ?? "",
         status: enrollment.status,
+        progressStatus: enrollment.progressStatus,
       };
     });
 

@@ -259,14 +259,17 @@ same `students.id` UUID used by `POST /admin/enroll/:studentId`.
       "type": "Lesson",
       "subject": "Maths",
       "ageGroup": "GCSE",
-      "status": "enrolled"
+      "status": "enrolled",
+      "progressStatus": "in_progress"
     }
   ]
 }
 ```
 
 `enrollments` contains the student's currently assigned (`status = enrolled`)
-content and is not reduced by the content browsing filters. It is empty when
+content and its `progressStatus` (`not_started`, `in_progress`, `completed`,
+`to_assess`, or `assessed`). It is not reduced by the content browsing filters.
+It is empty when
 `studentId` is omitted. If an assigned Contentful entry is no longer published,
 its `entryId` and status remain present while its Contentful metadata is returned
 as empty strings.
