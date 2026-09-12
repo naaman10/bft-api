@@ -13,8 +13,15 @@ import {
   getStudentById,
   linkStudentToNeonUser,
 } from "../lib/students.js";
-import { getMissingContentIds, listContent } from "../lib/content.js";
-import { enrollStudentInContent } from "../lib/enrollments.js";
+import {
+  getContentItemsByIds,
+  getMissingContentIds,
+  listContent,
+} from "../lib/content.js";
+import {
+  enrollStudentInContent,
+  listAdminEnrollmentsForStudent,
+} from "../lib/enrollments.js";
 import type { AppEnv } from "../types.js";
 
 const createUserBody = z.object({
@@ -37,6 +44,11 @@ const contentQuery = z.object({
   type: optionalFilter,
   subject: optionalFilter,
   ageGroup: optionalFilter,
+  studentId: z.preprocess(
+    (value) =>
+      typeof value === "string" && value.trim() === "" ? undefined : value,
+    z.string().uuid().optional()
+  ),
 });
 
 const enrollBody = z.object({
@@ -148,6 +160,7 @@ adminRoutes.get("/content", requireAdmin, async (c) => {
     type: c.req.query("type"),
     subject: c.req.query("subject"),
     ageGroup: c.req.query("ageGroup"),
+    studentId: c.req.query("studentId"),
   });
 
   if (!parsed.success) {
@@ -163,7 +176,42 @@ adminRoutes.get("/content", requireAdmin, async (c) => {
     );
   }
 
-  return c.json(await listContent(parsed.data));
+  const { studentId, ...filters } = parsed.data;
+  const content = await listContent(filters);
+
+  if (!studentId) {
+    return c.json({ ...content, enrollments: [] });
+  }
+
+  if (!env.DATABASE_URL) {
+    return c.json({ error: "Database is not configured." }, 503);
+  }
+
+  try {
+    const assigned = await listAdminEnrollmentsForStudent(studentId);
+    const contentById = await getContentItemsByIds(
+      assigned.map((enrollment) => enrollment.contentId)
+    );
+    const enrollments = assigned.map((enrollment) => {
+      const item = contentById.get(enrollment.contentId);
+
+      return {
+        entryId: enrollment.contentId,
+        name: item?.name ?? "",
+        type: item?.type ?? "",
+        subject: item?.subject ?? "",
+        ageGroup: item?.ageGroup ?? "",
+        status: enrollment.status,
+      };
+    });
+
+    return c.json({ ...content, enrollments });
+  } catch (error) {
+    if (error instanceof StudentNotFoundError) {
+      return c.json({ error: "Student not found." }, 404);
+    }
+    throw error;
+  }
 });
 
 adminRoutes.post("/enroll/:studentId", requireAdmin, async (c) => {

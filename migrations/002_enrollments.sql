@@ -6,7 +6,13 @@ CREATE TABLE IF NOT EXISTS enrollments (
   status TEXT NOT NULL DEFAULT 'enrolled'
     CHECK (status IN ('enrolled', 'withdrawn')),
   progress_status TEXT NOT NULL DEFAULT 'not_started'
-    CHECK (progress_status IN ('not_started', 'in_progress', 'completed')),
+    CHECK (progress_status IN (
+      'not_started',
+      'in_progress',
+      'completed',
+      'to_assess',
+      'assessed'
+    )),
   progress JSONB NOT NULL DEFAULT '{}'::jsonb,
   enrolled_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   started_at TIMESTAMPTZ,

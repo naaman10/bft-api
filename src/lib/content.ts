@@ -199,6 +199,36 @@ export async function getContentNamesByIds(
   return names;
 }
 
+export async function getContentItemsByIds(
+  contentIds: string[]
+): Promise<Map<string, ContentItem>> {
+  const ids = [...new Set(contentIds.map((id) => id.trim()).filter(Boolean))];
+  const items = new Map<string, ContentItem>();
+
+  for (let offset = 0; offset < ids.length; offset += 100) {
+    const batch = ids.slice(offset, offset + 100);
+    const page = await getContentful().getEntries<ContentSkeleton>({
+      content_type: CONTENT_TYPE,
+      "sys.id[in]": batch,
+      limit: batch.length,
+      select: [
+        "sys.id",
+        "fields.name",
+        "fields.type",
+        "fields.subject",
+        "fields.ageGroup",
+      ],
+    });
+
+    for (const entry of page.items) {
+      const item = mapEntry(entry);
+      items.set(item.entryId, item);
+    }
+  }
+
+  return items;
+}
+
 const KNOWN_FIELD_IDS = new Set([
   "name",
   "type",

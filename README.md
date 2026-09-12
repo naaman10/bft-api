@@ -226,11 +226,13 @@ Lists published Contentful entries of type `content`. Filter options update with
 **Request**
 
 ```
-GET /admin/content?subject=Maths&ageGroup=GCSE
+GET /admin/content?studentId=3f1c0a8e-2b9d-4c11-9e4a-8a6b1d2c3e4f&subject=Maths&ageGroup=GCSE
 X-Admin-Api-Key: <ADMIN_API_KEY>
 ```
 
-Optional query params: `type`, `subject`, `ageGroup`. Omit a param (or pass empty) to leave that facet unfiltered.
+Optional query params: `type`, `subject`, `ageGroup`, and `studentId`. Omit a
+content filter (or pass empty) to leave that facet unfiltered. `studentId` is the
+same `students.id` UUID used by `POST /admin/enroll/:studentId`.
 
 **200**
 
@@ -249,11 +251,29 @@ Optional query params: `type`, `subject`, `ageGroup`. Omit a param (or pass empt
       "subject": "Maths",
       "ageGroup": "GCSE"
     }
+  ],
+  "enrollments": [
+    {
+      "entryId": "abc123",
+      "name": "Fractions recap",
+      "type": "Lesson",
+      "subject": "Maths",
+      "ageGroup": "GCSE",
+      "status": "enrolled"
+    }
   ]
 }
 ```
 
-**401** if the admin key is missing or wrong. **503** if Contentful is not configured.
+`enrollments` contains the student's currently assigned (`status = enrolled`)
+content and is not reduced by the content browsing filters. It is empty when
+`studentId` is omitted. If an assigned Contentful entry is no longer published,
+its `entryId` and status remain present while its Contentful metadata is returned
+as empty strings.
+
+**400** if `studentId` is not a UUID. **401** if the admin key is missing or
+wrong. **404** if the student does not exist. **503** if Contentful or the
+database is not configured.
 
 ### `POST /admin/enroll/:studentId`
 
@@ -372,7 +392,8 @@ activity, and returns **200** `{ progressStatus, progress }`.
 An item being completed does not complete the entire enrollment.
 
 **400** invalid JSON/changes; **401** invalid JWT; **403** not enrolled;
-**409** enrollment completed or conflicting concurrent changes (retry the latter);
+**409** enrollment submitted/assessed or conflicting concurrent changes (retry
+the latter);
 **503** database not configured. No new migration is required.
 
 
@@ -383,14 +404,17 @@ To complete an enrollment, use the same authenticated PATCH endpoint:
 ```
 
 Optional `items` and `currentItemId` may accompany `action: "complete"` to save
-final changes. The API merges those changes and sets `progress_status` to
-`completed` and `completed_at` to server time in one guarded update. It also
+final changes. The API merges those changes and sets `completed_at` to server
+time in one guarded update. For automatically marked content it sets
+`progress_status` to `completed`; when `requiresAssessment` is true it sets
+`progress_status` to `to_assess`. It also
 updates activity timestamps and initializes `started_at` if unset. Enrollment
 `status` stays `enrolled`; completion may allocate automatic points as described
 below.
 The response includes `progressStatus`, `progress`, and `completedAt` (null on
 ordinary saves). Subsequent saves or completion requests return 409, preserving
-all saved values. Omitting `action`, or using `action: "save"`, retains normal
+all saved values. `to_assess` and `assessed` enrollments are locked in the same
+way as `completed`. Omitting `action`, or using `action: "save"`, retains normal
 save behaviour. An empty save request is rejected.
 
 
@@ -409,8 +433,9 @@ Completion notifications: set `COMPLETION_NOTIFICATION_EMAIL` to Ellie's email
 address, alongside `RESEND_API_KEY` and `RESEND_FROM_EMAIL`. Publish Resend's
 `notification` template with `email_subject`, `email_recipient`, `email_body`,
 and `email_image`.
-A successful transition to completed sends the pupil's name/email and assignment
-name. Ordinary saves and rejected repeat completion requests do not send mail.
+A successful completion action sends the pupil's name/email and assignment name,
+including when the resulting status is `to_assess`. Ordinary saves and rejected
+repeat completion requests do not send mail.
 Completion responses include `notificationSent`; false means completion succeeded
 but notification delivery failed. Failures are logged, and currently require manual
 follow-up; there is no background retry worker. Resend acceptance is not proof of

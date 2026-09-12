@@ -18,7 +18,18 @@ import {
 } from "./students.js";
 
 export type EnrollmentStatus = "enrolled" | "withdrawn";
-export type ProgressStatus = "not_started" | "in_progress" | "completed";
+export type ProgressStatus =
+  | "not_started"
+  | "in_progress"
+  | "completed"
+  | "to_assess"
+  | "assessed";
+
+export function completedProgressStatus(
+  requiresAssessment: boolean
+): Extract<ProgressStatus, "completed" | "to_assess"> {
+  return requiresAssessment ? "to_assess" : "completed";
+}
 
 export type Enrollment = {
   id: string;
@@ -50,6 +61,11 @@ export type LearnContentEnrollment = {
   progressStatus: ProgressStatus;
   progress: EnrollmentProgress;
   enrolledAt: string;
+};
+
+export type AdminEnrollmentAssignment = {
+  contentId: string;
+  status: EnrollmentStatus;
 };
 
 type EnrollmentRow = {
@@ -163,6 +179,30 @@ export async function enrollStudentInContent(
   `;
 
   return (rows as EnrollmentRow[]).map(toEnrollment);
+}
+
+export async function listAdminEnrollmentsForStudent(
+  studentId: string
+): Promise<AdminEnrollmentAssignment[]> {
+  const student = await getStudentById(studentId);
+
+  if (!student) {
+    throw new StudentNotFoundError();
+  }
+
+  const sql = getDb();
+  const rows = await sql`
+    SELECT content_id, status
+    FROM enrollments
+    WHERE student_id = ${studentId}::uuid
+      AND status = 'enrolled'
+    ORDER BY enrolled_at DESC
+  `;
+
+  return rows.map((row) => ({
+    contentId: String(row.content_id),
+    status: row.status as EnrollmentStatus,
+  }));
 }
 
 type AssignedEnrollmentRow = {
@@ -336,9 +376,17 @@ export async function saveLearnProgress(neonUserId: string, contentId: string,
     const row = rows[0];
     if (!row || row.status !== "enrolled")
       throw new ProgressSaveError(403, "Not enrolled in this content.");
-    if (row.progress_status === "completed")
-      throw new ProgressSaveError(409, "Completed enrollment progress cannot be changed.");
+    if (row.progress_status !== "not_started" && row.progress_status !== "in_progress") {
+      throw new ProgressSaveError(
+        409,
+        "Submitted enrollment progress cannot be changed."
+      );
+    }
     const progress = mergeProgress(row.progress, patch, new Date().toISOString());
+    const nextProgressStatus: ProgressStatus =
+      patch.action === "complete"
+        ? completedProgressStatus(markingScheme?.requiresAssessment ?? false)
+        : "in_progress";
     const pointAwards =
       patch.action === "complete" && markingScheme && !markingScheme.requiresAssessment
         ? calculatePointAwards(progress, markingScheme.questions)
@@ -351,7 +399,7 @@ export async function saveLearnProgress(neonUserId: string, contentId: string,
         UPDATE enrollments
         SET
           progress = ${JSON.stringify(progress)}::jsonb,
-          progress_status = ${patch.action === "complete" ? "completed" : "in_progress"},
+          progress_status = ${nextProgressStatus},
           completed_at = CASE
             WHEN ${patch.action === "complete"} THEN NOW()
             ELSE completed_at
@@ -361,7 +409,7 @@ export async function saveLearnProgress(neonUserId: string, contentId: string,
           updated_at = NOW()
         WHERE id = ${row.id}::uuid
           AND status = 'enrolled'
-          AND progress_status <> 'completed'
+          AND progress_status IN ('not_started', 'in_progress')
           AND progress = ${JSON.stringify(row.progress)}::jsonb
         RETURNING student_id, progress, progress_status, completed_at
       ), inserted_points AS (
