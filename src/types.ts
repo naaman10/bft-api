@@ -12,6 +12,7 @@ export type SessionResponse =
       authenticated: true;
       user: AuthUser;
       enrollments: LearnEnrollment[];
+      totalPoints: number;
     }
   | {
       authenticated: false;

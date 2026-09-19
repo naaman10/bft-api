@@ -1,4 +1,7 @@
+import { env } from "../config/env.js";
+import { getDb } from "./db.js";
 import type { EnrollmentProgress } from "./progress.js";
+import { getStudentByNeonUserId } from "./students.js";
 
 export type MarkingQuestion = {
   questionId: string;
@@ -82,4 +85,34 @@ export function calculatePointAwards(
   }
 
   return awards;
+}
+
+export async function getTotalPointsForNeonUser(
+  neonUserId: string
+): Promise<number> {
+  if (!env.DATABASE_URL) {
+    return 0;
+  }
+
+  let student;
+
+  try {
+    student = await getStudentByNeonUserId(neonUserId);
+  } catch (error) {
+    console.error(error);
+    return 0;
+  }
+
+  if (!student) {
+    return 0;
+  }
+
+  const sql = getDb();
+  const rows = await sql`
+    SELECT COALESCE(SUM(points_earned), 0) AS total_points
+    FROM points
+    WHERE student_id = ${student.id}::uuid
+  `;
+
+  return Number(rows[0]?.total_points ?? 0);
 }

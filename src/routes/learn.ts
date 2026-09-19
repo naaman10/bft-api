@@ -8,17 +8,22 @@ import {
   getLearnEnrollmentForContent,
   listLearnEnrollmentsForNeonUser,
 } from "../lib/enrollments.js";
+import { getTotalPointsForNeonUser } from "../lib/points.js";
 import type { AppEnv, SessionResponse } from "../types.js";
 
 export const learnRoutes = new Hono<AppEnv>();
 
 learnRoutes.get("/user", requireAuth, async (c) => {
   const user = c.get("user");
-  const enrollments = await listLearnEnrollmentsForNeonUser(user.id);
+  const [enrollments, totalPoints] = await Promise.all([
+    listLearnEnrollmentsForNeonUser(user.id),
+    getTotalPointsForNeonUser(user.id),
+  ]);
   const body: SessionResponse = {
     authenticated: true,
     user,
     enrollments,
+    totalPoints,
   };
 
   return c.json(body);

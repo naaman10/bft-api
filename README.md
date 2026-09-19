@@ -44,7 +44,7 @@ Backend for the BFT Learn student portal. This service validates Neon Auth sessi
 
 ### `GET /learn/user`
 
-Returns the authenticated user's details and their assigned enrollments.
+Returns the authenticated user's details, assigned enrollments, and total earned points.
 
 **Request**
 
@@ -73,11 +73,12 @@ Authorization: Bearer <neon-auth-jwt>
       "progressStatus": "not_started",
       "enrolledAt": "2026-09-01T10:00:00.000Z"
     }
-  ]
+  ],
+  "totalPoints": 12
 }
 ```
 
-`enrollments` is the student's `enrolled` rows (withdrawn is omitted). `contentId` is the Contentful entry ID. `name` comes from that entry. `status`, `progressStatus`, and `enrolledAt` come from `enrollments`. If the student is not linked, the database is unset, or Contentful cannot resolve a name, the array is empty or `name` is `""`.
+`enrollments` is the student's `enrolled` rows (withdrawn is omitted). `contentId` is the Contentful entry ID. `name` comes from that entry. `status`, `progressStatus`, and `enrolledAt` come from `enrollments`. If the student is not linked, the database is unset, or Contentful cannot resolve a name, the array is empty or `name` is `""`. `totalPoints` is the sum of `points.points_earned` for the linked student. It is `0` when the student is not linked, the database is unset, or they have no awards.
 
 **401** — missing, expired, or invalid token
 
@@ -355,7 +356,7 @@ src/
   index.ts               Node server (binds 0.0.0.0 for Render)
 ```
 
-`DATABASE_URL` is required for `/admin/user/create`, `/admin/enroll/:studentId`, and `/learn/content/:id`. `/learn/user` enrollments also need `DATABASE_URL` (and Contentful for names); without them the session still returns **200** with `enrollments: []`. Contentful (`CONTENTFUL_SPACE_ID`, `CONTENTFUL_ACCESS_TOKEN`) is required for `/admin/content`, enroll, and `/learn/content/:id`. Admin create-user also needs `ADMIN_API_KEY`, Neon management vars, `LEARN_APP_URL`, and Resend vars.
+`DATABASE_URL` is required for `/admin/user/create`, `/admin/enroll/:studentId`, and `/learn/content/:id`. `/learn/user` enrollments and `totalPoints` also need `DATABASE_URL` (and Contentful for names); without them the session still returns **200** with `enrollments: []` and `totalPoints: 0`. Contentful (`CONTENTFUL_SPACE_ID`, `CONTENTFUL_ACCESS_TOKEN`) is required for `/admin/content`, enroll, and `/learn/content/:id`. Admin create-user also needs `ADMIN_API_KEY`, Neon management vars, `LEARN_APP_URL`, and Resend vars.
 
 ## Deploy on Render
 
@@ -480,3 +481,5 @@ response adds:
 `pointsAwarded` contains rows created by that request. It is empty when answers
 are incorrect, assessment is required, or an award already exists. The client
 cannot submit points, correct answers, or marking results.
+`GET /learn/user` returns `totalPoints` as the sum of those earned awards for
+the authenticated student.
