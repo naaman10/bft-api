@@ -13,6 +13,7 @@ export type SessionResponse =
       user: AuthUser;
       enrollments: LearnEnrollment[];
       totalPoints: number;
+      targetPoints: number | null;
     }
   | {
       authenticated: false;

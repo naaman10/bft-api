@@ -1,3 +1,4 @@
+import { env } from "../config/env.js";
 import { getDb } from "./db.js";
 
 export class StudentNotFoundError extends Error {
@@ -20,6 +21,7 @@ export type Student = {
   name: string;
   neonUserId: string | null;
   invitedAt: string | null;
+  targetPoints: number | null;
 };
 
 type StudentRow = {
@@ -28,6 +30,7 @@ type StudentRow = {
   name: string;
   neon_user_id: string | null;
   invited_at: string | Date | null;
+  target_points: number | string | null;
 };
 
 function toStudent(row: StudentRow): Student {
@@ -40,13 +43,14 @@ function toStudent(row: StudentRow): Student {
       row.invited_at instanceof Date
         ? row.invited_at.toISOString()
         : row.invited_at,
+    targetPoints: row.target_points === null ? null : Number(row.target_points),
   };
 }
 
 export async function getStudentById(id: string): Promise<Student | null> {
   const sql = getDb();
   const rows = await sql`
-    SELECT id, email, name, neon_user_id, invited_at
+    SELECT id, email, name, neon_user_id, invited_at, target_points
     FROM students
     WHERE id = ${id}::uuid
     LIMIT 1
@@ -61,7 +65,7 @@ export async function getStudentByNeonUserId(
 ): Promise<Student | null> {
   const sql = getDb();
   const rows = await sql`
-    SELECT id, email, name, neon_user_id, invited_at
+    SELECT id, email, name, neon_user_id, invited_at, target_points
     FROM students
     WHERE neon_user_id = ${neonUserId}::uuid
     LIMIT 1
@@ -97,7 +101,7 @@ export async function linkStudentToNeonUser(input: {
       invited_at = COALESCE(invited_at, NOW()),
       updated_at = NOW()
     WHERE id = ${input.studentId}::uuid
-    RETURNING id, email, name, neon_user_id, invited_at
+    RETURNING id, email, name, neon_user_id, invited_at, target_points
   `;
 
   const row = rows[0] as StudentRow | undefined;
@@ -107,4 +111,23 @@ export async function linkStudentToNeonUser(input: {
   }
 
   return toStudent(row);
+}
+
+export async function getTargetPointsForNeonUser(
+  neonUserId: string
+): Promise<number | null> {
+  if (!env.DATABASE_URL) {
+    return null;
+  }
+
+  let student;
+
+  try {
+    student = await getStudentByNeonUserId(neonUserId);
+  } catch (error) {
+    console.error(error);
+    return null;
+  }
+
+  return student?.targetPoints ?? null;
 }
