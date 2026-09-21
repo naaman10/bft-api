@@ -353,6 +353,60 @@ function parseSavedPointAwards(value: unknown): PointAward[] {
   }));
 }
 
+export type EnrollmentWithStudent = Enrollment & {
+  student: {
+    id: string;
+    name: string;
+    email: string;
+  };
+};
+
+export async function getEnrollmentById(
+  enrollmentId: string
+): Promise<EnrollmentWithStudent | null> {
+  const sql = getDb();
+  const rows = await sql`
+    SELECT
+      e.id,
+      e.student_id,
+      e.content_id,
+      e.status,
+      e.progress_status,
+      e.progress,
+      e.enrolled_at,
+      e.started_at,
+      e.completed_at,
+      e.last_activity_at,
+      e.withdrawn_at,
+      e.created_at,
+      e.updated_at,
+      s.id AS student__id,
+      s.name AS student__name,
+      s.email AS student__email
+    FROM enrollments e
+    JOIN students s ON s.id = e.student_id
+    WHERE e.id = ${enrollmentId}::uuid
+    LIMIT 1
+  `;
+
+  const row = rows[0];
+
+  if (!row) {
+    return null;
+  }
+
+  const enrollment = toEnrollment(row as EnrollmentRow);
+
+  return {
+    ...enrollment,
+    student: {
+      id: String(row.student__id),
+      name: String(row.student__name),
+      email: String(row.student__email),
+    },
+  };
+}
+
 export async function saveLearnProgress(neonUserId: string, contentId: string,
   patch: import("./progress.js").ProgressPatch) {
   const { mergeProgress } = await import("./progress.js");

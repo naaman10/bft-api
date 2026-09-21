@@ -17,10 +17,12 @@ import {
   getContentItemsByIds,
   getMissingContentIds,
   listContent,
+  getContentEntryWithAnswers,
 } from "../lib/content.js";
 import {
   enrollStudentInContent,
   listAdminEnrollmentsForStudent,
+  getEnrollmentById,
 } from "../lib/enrollments.js";
 import type { AppEnv } from "../types.js";
 
@@ -53,6 +55,10 @@ const contentQuery = z.object({
 
 const enrollBody = z.object({
   contentIds: z.array(z.string().trim().min(1)).min(1),
+});
+
+const reviewBody = z.object({
+  adminUserId: z.string().uuid(),
 });
 
 export const adminRoutes = new Hono<AppEnv>();
@@ -273,4 +279,147 @@ adminRoutes.post("/enroll/:studentId", requireAdmin, async (c) => {
     }
     throw error;
   }
+});
+
+adminRoutes.get("/review/:id", requireAdmin, async (c) => {
+  if (!env.DATABASE_URL) {
+    return c.json({ error: "Database is not configured." }, 503);
+  }
+
+  if (!env.CONTENTFUL_SPACE_ID || !env.CONTENTFUL_ACCESS_TOKEN) {
+    return c.json({ error: "Contentful is not configured." }, 503);
+  }
+
+  const enrollmentId = z.string().uuid().safeParse(c.req.param("id"));
+
+  if (!enrollmentId.success) {
+    return c.json({ error: "Invalid enrollment id." }, 400);
+  }
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Invalid JSON body." }, 400);
+  }
+
+  const parsed = reviewBody.safeParse(body);
+
+  if (!parsed.success) {
+    return c.json(
+      {
+        error: "Invalid request body.",
+        details: parsed.error.issues.map((issue) => ({
+          path: issue.path.join("."),
+          message: issue.message,
+        })),
+      },
+      400
+    );
+  }
+
+  const enrollment = await getEnrollmentById(enrollmentId.data);
+
+  if (!enrollment) {
+    return c.json({ error: "Enrollment not found." }, 404);
+  }
+
+  const content = await getContentEntryWithAnswers(enrollment.contentId);
+
+  if (!content) {
+    return c.json({ error: "Content not found." }, 404);
+  }
+
+  type QuestionWithAnswers = {
+    questionId: string;
+    questionContent: unknown;
+    studentAnswer: unknown;
+    correctAnswer: unknown;
+    points: number;
+    status: string;
+    updatedAt?: string;
+    completedAt?: string;
+  };
+
+  const questions: QuestionWithAnswers[] = [];
+  const progressItems = enrollment.progress.items;
+
+  function extractQuestions(value: unknown, collected: QuestionWithAnswers[]): void {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        extractQuestions(item, collected);
+      }
+      return;
+    }
+
+    if (!value || typeof value !== "object") {
+      return;
+    }
+
+    const record = value as Record<string, unknown>;
+    const contentType = record.contentType;
+    const entryId = record.entryId;
+    const fields = record.fields as Record<string, unknown> | undefined;
+
+    if (
+      fields &&
+      entryId &&
+      typeof entryId === "string" &&
+      (contentType === "question" || contentType === "questionMultipleChoice")
+    ) {
+      const points = fields.points;
+      const correctAnswer = fields.answer;
+      const progressItem = progressItems[entryId];
+
+      if (
+        correctAnswer !== undefined &&
+        typeof points === "number" &&
+        Number.isInteger(points) &&
+        points > 0
+      ) {
+        collected.push({
+          questionId: entryId,
+          questionContent: fields,
+          studentAnswer: progressItem?.answer,
+          correctAnswer,
+          points,
+          status: progressItem?.status ?? "not_started",
+          updatedAt: progressItem?.updatedAt,
+          completedAt: progressItem?.completedAt,
+        });
+      }
+    }
+
+    for (const child of Object.values(fields ?? record)) {
+      extractQuestions(child, collected);
+    }
+  }
+
+  extractQuestions(content.fields, questions);
+
+  return c.json({
+    enrollment: {
+      id: enrollment.id,
+      studentId: enrollment.studentId,
+      contentId: enrollment.contentId,
+      status: enrollment.status,
+      progressStatus: enrollment.progressStatus,
+      enrolledAt: enrollment.enrolledAt,
+      startedAt: enrollment.startedAt,
+      completedAt: enrollment.completedAt,
+      lastActivityAt: enrollment.lastActivityAt,
+    },
+    student: enrollment.student,
+    content: {
+      entryId: content.entryId,
+      name: content.name,
+      type: content.type,
+      subject: content.subject,
+      ageGroup: content.ageGroup,
+      stage: content.stage,
+      requiresAssessment: content.requiresAssessment,
+    },
+    sections: content.fields.sections ?? [],
+    questions,
+  });
 });
