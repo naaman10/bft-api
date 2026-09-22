@@ -34,7 +34,7 @@ export type AssessmentData = {
 };
 
 export class AssessmentError extends Error {
-  constructor(public readonly status: 400 | 403 | 404 | 409, message: string) {
+  constructor(public readonly status: 400 | 403 | 404 | 409 | 500, message: string) {
     super(message);
   }
 }
@@ -378,77 +378,83 @@ export async function completeAssessment(
     );
   }
 
-  // Complete assessment and update enrollment in a transaction
-  await sql.begin(async (tx) => {
-    // Mark assessment as completed
-    await tx`
-      UPDATE assessments
-      SET
-        status = 'completed',
-        completed_at = NOW(),
-        updated_at = NOW()
-      WHERE enrollment_id = ${enrollmentId}::uuid
-        AND status = 'in_progress'
-    `;
+  // Complete assessment and update enrollment atomically using CTE
+  const nonZeroGrades = existing.questionGrades.filter(
+    (g) => g.pointsEarned > 0
+  );
 
-    // Update enrollment progress status to assessed
-    await tx`
+  if (nonZeroGrades.length > 0) {
+    const nonZeroQuestionIds = nonZeroGrades.map((g) => g.questionId);
+    const nonZeroPointsEarned = nonZeroGrades.map((g) => g.pointsEarned);
+    const nonZeroPointsAvailable = nonZeroGrades.map((g) => g.pointsAvailable);
+
+    await sql`
+      WITH updated_assessment AS (
+        UPDATE assessments
+        SET
+          status = 'completed',
+          completed_at = NOW(),
+          updated_at = NOW()
+        WHERE enrollment_id = ${enrollmentId}::uuid
+          AND status = 'in_progress'
+        RETURNING enrollment_id
+      ), updated_enrollment AS (
+        UPDATE enrollments
+        SET
+          progress_status = 'assessed',
+          updated_at = NOW()
+        WHERE id = (SELECT enrollment_id FROM updated_assessment)
+        RETURNING student_id, content_id
+      )
+      INSERT INTO points (
+        student_id,
+        content_id,
+        question_id,
+        points_earned,
+        points_available,
+        source,
+        awarded_by
+      )
+      SELECT
+        (SELECT student_id FROM updated_enrollment),
+        (SELECT content_id FROM updated_enrollment),
+        award.question_id,
+        award.points_earned,
+        award.points_available,
+        'assessment',
+        ${assessedBy}::uuid
+      FROM unnest(
+        ${nonZeroQuestionIds}::text[],
+        ${nonZeroPointsEarned}::integer[],
+        ${nonZeroPointsAvailable}::integer[]
+      ) AS award(question_id, points_earned, points_available)
+      ON CONFLICT (student_id, question_id) DO UPDATE SET
+        points_earned = EXCLUDED.points_earned,
+        points_available = EXCLUDED.points_available,
+        source = EXCLUDED.source,
+        awarded_by = EXCLUDED.awarded_by,
+        updated_at = NOW()
+    `;
+  } else {
+    // No points to award, just update assessment and enrollment
+    await sql`
+      WITH updated_assessment AS (
+        UPDATE assessments
+        SET
+          status = 'completed',
+          completed_at = NOW(),
+          updated_at = NOW()
+        WHERE enrollment_id = ${enrollmentId}::uuid
+          AND status = 'in_progress'
+        RETURNING enrollment_id
+      )
       UPDATE enrollments
       SET
         progress_status = 'assessed',
         updated_at = NOW()
-      WHERE id = ${enrollmentId}::uuid
+      WHERE id = (SELECT enrollment_id FROM updated_assessment)
     `;
-
-    // Insert points records from grades
-    const questionIds = existing.questionGrades.map((g) => g.questionId);
-    const pointsEarned = existing.questionGrades.map((g) => g.pointsEarned);
-    const pointsAvailable = existing.questionGrades.map((g) => g.pointsAvailable);
-
-    // Only insert points where points were earned
-    const nonZeroGrades = existing.questionGrades.filter(
-      (g) => g.pointsEarned > 0
-    );
-
-    if (nonZeroGrades.length > 0) {
-      const nonZeroQuestionIds = nonZeroGrades.map((g) => g.questionId);
-      const nonZeroPointsEarned = nonZeroGrades.map((g) => g.pointsEarned);
-      const nonZeroPointsAvailable = nonZeroGrades.map(
-        (g) => g.pointsAvailable
-      );
-
-      await tx`
-        INSERT INTO points (
-          student_id,
-          content_id,
-          question_id,
-          points_earned,
-          points_available,
-          source,
-          awarded_by
-        )
-        SELECT
-          ${enrollment.studentId}::uuid,
-          ${enrollment.contentId},
-          award.question_id,
-          award.points_earned,
-          award.points_available,
-          'assessment',
-          ${assessedBy}::uuid
-        FROM unnest(
-          ${nonZeroQuestionIds}::text[],
-          ${nonZeroPointsEarned}::integer[],
-          ${nonZeroPointsAvailable}::integer[]
-        ) AS award(question_id, points_earned, points_available)
-        ON CONFLICT (student_id, question_id) DO UPDATE SET
-          points_earned = EXCLUDED.points_earned,
-          points_available = EXCLUDED.points_available,
-          source = EXCLUDED.source,
-          awarded_by = EXCLUDED.awarded_by,
-          updated_at = NOW()
-      `;
-    }
-  });
+  }
 
   // Return the completed assessment
   const result = await getAssessmentByEnrollmentId(enrollmentId);
