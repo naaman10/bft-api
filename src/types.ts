@@ -1,5 +1,6 @@
 import type { AuthUser } from "./lib/auth.js";
 import type { LearnEnrollment } from "./lib/enrollments.js";
+import type { CompletedAssessment } from "./lib/assessments.js";
 
 export type AppEnv = {
   Variables: {
@@ -14,6 +15,7 @@ export type SessionResponse =
       enrollments: LearnEnrollment[];
       totalPoints: number;
       targetPoints: number | null;
+      completedAssessments: CompletedAssessment[];
     }
   | {
       authenticated: false;
