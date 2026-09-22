@@ -513,6 +513,7 @@ adminRoutes.post("/review/:id", requireAdmin, async (c) => {
 
 adminRoutes.post("/assessment/:enrollmentId", requireAdmin, async (c) => {
   console.log('[DEBUG] POST /assessment/:enrollmentId called');
+  console.log('[DEBUG] Enrollment ID param:', c.req.param("enrollmentId"));
   
   if (!env.DATABASE_URL) {
     return c.json({ error: "Database is not configured." }, 503);
@@ -532,15 +533,18 @@ adminRoutes.post("/assessment/:enrollmentId", requireAdmin, async (c) => {
   let body: unknown;
   try {
     body = await c.req.json();
-  } catch {
-    console.log('[DEBUG] Invalid JSON body');
+    console.log('[DEBUG] Request body received:', JSON.stringify(body, null, 2));
+  } catch (error) {
+    console.log('[DEBUG] Invalid JSON body - parse error:', error);
     return c.json({ error: "Invalid JSON body." }, 400);
   }
 
   const parsed = saveAssessmentBody.safeParse(body);
 
   if (!parsed.success) {
-    console.log('[DEBUG] Request body validation failed:', parsed.error.issues);
+    console.log('[DEBUG] Request body validation failed:');
+    console.log('[DEBUG] Body:', JSON.stringify(body, null, 2));
+    console.log('[DEBUG] Validation errors:', JSON.stringify(parsed.error.issues, null, 2));
     return c.json(
       {
         error: "Invalid request body.",
