@@ -280,8 +280,11 @@ SELECT * FROM points WHERE student_id = '00000000-0000-0000-0000-000000000001';
 ... | ...        | test-...   | q2          | 3             | 5                | assessment | 00...99 |
 ```
 
-### Test 8: Add General Feedback
+### Test 8: Add General Feedback (Works for ANY Enrollment)
 
+This endpoint works for ALL enrollments, regardless of status or requiresAssessment flag.
+
+**Example 1: Feedback on Assessed Enrollment**
 ```bash
 curl -X POST http://localhost:4000/admin/enrollment/00000000-0000-0000-0000-000000000002/feedback \
   -H "Content-Type: application/json" \
@@ -298,6 +301,57 @@ curl -X POST http://localhost:4000/admin/enrollment/00000000-0000-0000-0000-0000
   "success": true
 }
 ```
+
+**Example 2: Feedback on Completed Enrollment (requiresAssessment=false)**
+
+This works for auto-marked content where the student just completed it without needing manual assessment:
+
+```bash
+# First, create a completed enrollment (auto-marked)
+psql $DATABASE_URL << EOF
+INSERT INTO enrollments (
+  id,
+  student_id,
+  content_id,
+  status,
+  progress_status,
+  progress,
+  completed_at
+)
+VALUES (
+  '00000000-0000-0000-0000-000000000003',
+  '00000000-0000-0000-0000-000000000001',
+  'auto-marked-content-id',
+  'enrolled',
+  'completed',  -- Auto-marked content goes straight to 'completed'
+  '{"version":1,"items":{}}'::jsonb,
+  NOW()
+);
+EOF
+
+# Add feedback to the completed enrollment
+curl -X POST http://localhost:4000/admin/enrollment/00000000-0000-0000-0000-000000000003/feedback \
+  -H "Content-Type: application/json" \
+  -H "X-Admin-Api-Key: test_admin_key_for_local_development_only_not_secure" \
+  -d '{
+    "feedback": "Well done on completing this! You showed great understanding.",
+    "createdBy": "00000000-0000-0000-0000-000000000099"
+  }'
+```
+
+**Expected Response (201 Created):**
+```json
+{
+  "success": true
+}
+```
+
+**Key Point:** Feedback works for:
+- ✅ `progress_status: 'completed'` (auto-marked content)
+- ✅ `progress_status: 'assessed'` (manually assessed content)
+- ✅ `progress_status: 'in_progress'` (encouragement during work)
+- ✅ `progress_status: 'to_assess'` (before assessment starts)
+- ✅ Any enrollment status - no restrictions!
 
 ### Test 9: Get Feedback History
 

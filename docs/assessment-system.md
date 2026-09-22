@@ -142,7 +142,19 @@ Retrieve an existing assessment.
 Same structure as save assessment response.
 
 ### POST `/admin/enrollment/:enrollmentId/feedback`
-Add general feedback to an enrollment (works for all enrollments, not just assessed ones).
+Add general feedback to an enrollment.
+
+**⚠️ Important:** This endpoint works for **ALL enrollments**, regardless of:
+- `requiresAssessment` flag (true or false)
+- `progress_status` (not_started, in_progress, completed, to_assess, assessed)
+- Whether an assessment exists or not
+
+**Use Cases:**
+- Feedback on completed auto-marked content (`requiresAssessment: false`, status: `completed`)
+- Feedback on assessed content (`requiresAssessment: true`, status: `assessed`)
+- Encouragement during in-progress work
+- Comments on withdrawn enrollments
+- Multiple feedback entries allowed per enrollment
 
 **Authorization:** Requires admin authentication
 
@@ -159,6 +171,17 @@ Add general feedback to an enrollment (works for all enrollments, not just asses
 {
   "success": true
 }
+```
+
+**Example: Feedback on Auto-Marked Content**
+```bash
+# Works for completed enrollment that didn't need assessment
+POST /admin/enrollment/:enrollmentId/feedback
+{
+  "feedback": "Great job! Your answers were all correct.",
+  "createdBy": "admin-uuid"
+}
+# Returns 201 Created
 ```
 
 ### GET `/admin/enrollment/:enrollmentId/feedback`

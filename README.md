@@ -565,7 +565,15 @@ X-Admin-Api-Key: <ADMIN_API_KEY>
 
 #### `POST /admin/enrollment/:enrollmentId/feedback`
 
-Add general feedback to an enrollment. Unlike assessments, feedback can be added to any enrollment regardless of `requiresAssessment`.
+Add general feedback to **any enrollment**. This works for all enrollments regardless of:
+- `requiresAssessment` flag (true or false)
+- Progress status (not_started, in_progress, **completed**, to_assess, assessed)
+- Whether an assessment exists or not
+
+**Use Cases:**
+- Feedback on **completed auto-marked content** (requiresAssessment: false)
+- Feedback on assessed content (requiresAssessment: true)
+- Encouragement during in-progress work
 
 **Request**
 
@@ -591,6 +599,20 @@ Content-Type: application/json
 ```
 
 Multiple feedback entries can be added over time. **404** if the enrollment doesn't exist.
+
+**Example: Feedback on completed auto-marked work:**
+```bash
+# Student completed auto-marked quiz (requiresAssessment: false)
+# Enrollment status is 'completed' (not 'to_assess' or 'assessed')
+# Admin can still add feedback:
+
+POST /admin/enrollment/:enrollmentId/feedback
+{
+  "feedback": "Excellent work! All answers correct.",
+  "createdBy": "admin-uuid"
+}
+# Works perfectly! Returns 201 Created
+```
 
 #### `GET /admin/enrollment/:enrollmentId/feedback`
 

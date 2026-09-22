@@ -466,6 +466,20 @@ export async function completeAssessment(
   return result;
 }
 
+/**
+ * Add general feedback to any enrollment.
+ * 
+ * This works for ALL enrollments regardless of:
+ * - requiresAssessment flag (true or false)
+ * - progress_status (not_started, in_progress, completed, to_assess, assessed)
+ * - Whether an assessment exists or not
+ * 
+ * Use cases:
+ * - Add feedback to auto-marked content (requiresAssessment=false, status=completed)
+ * - Add feedback to assessed content (requiresAssessment=true, status=assessed)
+ * - Add encouragement during in-progress work
+ * - Multiple feedback entries are allowed per enrollment
+ */
 export async function addEnrollmentFeedback(
   enrollmentId: string,
   feedback: string,
@@ -473,13 +487,14 @@ export async function addEnrollmentFeedback(
 ): Promise<void> {
   const sql = getDb();
 
-  // Verify enrollment exists
+  // Verify enrollment exists (only validation - no status checks)
   const enrollment = await getEnrollmentById(enrollmentId);
 
   if (!enrollment) {
     throw new AssessmentError(404, "Enrollment not found.");
   }
 
+  // Insert feedback - works for ANY enrollment regardless of status
   await sql`
     INSERT INTO enrollment_feedback (enrollment_id, feedback, created_by)
     VALUES (${enrollmentId}::uuid, ${feedback}, ${createdBy}::uuid)
