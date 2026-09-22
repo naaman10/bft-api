@@ -426,8 +426,20 @@ adminRoutes.post("/review/:id", requireAdmin, async (c) => {
       const correctAnswer = fields.answer;
       const progressItem = progressItems[sys.id];
 
+      console.log('[DEBUG] Found question entry:', {
+        questionId: sys.id,
+        contentType,
+        hasFields: !!fields,
+        fieldKeys: Object.keys(fields),
+        correctAnswer,
+        points,
+        hasProgressItem: !!progressItem,
+        studentAnswer: progressItem?.answer
+      });
+
+      // Include question if it has valid points, regardless of whether it has a correct answer
+      // (manually assessed questions don't have pre-defined correct answers)
       if (
-        correctAnswer !== undefined &&
         typeof points === "number" &&
         Number.isInteger(points) &&
         points > 0
@@ -436,11 +448,17 @@ adminRoutes.post("/review/:id", requireAdmin, async (c) => {
           questionId: sys.id,
           questionContent: fields,
           studentAnswer: progressItem?.answer,
-          correctAnswer,
+          correctAnswer: correctAnswer !== undefined ? correctAnswer : null,
           points,
           status: progressItem?.status ?? "not_started",
           updatedAt: progressItem?.updatedAt,
           completedAt: progressItem?.completedAt,
+        });
+      } else {
+        console.log('[DEBUG] Question not added:', {
+          reason: !(typeof points === "number") ? 'points not number' :
+                  !Number.isInteger(points) ? 'points not integer' :
+                  !(points > 0) ? 'points not positive' : 'unknown'
         });
       }
       return; // Don't traverse deeper into question fields
@@ -454,7 +472,17 @@ adminRoutes.post("/review/:id", requireAdmin, async (c) => {
 
   // Extract from the raw entry's fields
   const rawFields = rawEntry.fields as Record<string, unknown>;
-  extractQuestionsFromRaw(rawFields.sections, questions);
+  
+  // Search through all fields to find questions
+  extractQuestionsFromRaw(rawFields, questions);
+  
+  console.log('[DEBUG] Raw entry structure:', {
+    hasFields: !!rawFields,
+    fieldKeys: rawFields ? Object.keys(rawFields) : [],
+    hasSections: !!rawFields?.sections,
+    questionsFound: questions.length,
+    progressItemKeys: Object.keys(progressItems)
+  });
 
   return c.json({
     enrollment: {
