@@ -452,3 +452,58 @@ export async function getContentEntry(
     throw error;
   }
 }
+
+export async function getContentEntryWithAnswers(
+  entryId: string
+): Promise<ContentEntry | null> {
+  const id = entryId.trim();
+
+  if (!id) {
+    return null;
+  }
+
+  const client = getContentful();
+
+  try {
+    const entry = await client.getEntry<ContentSkeleton>(id, { include: 10 });
+
+    if (entry.sys.contentType?.sys.id !== CONTENT_TYPE) {
+      return null;
+    }
+
+    const extraFields: Record<string, unknown> = {};
+
+    for (const [key, value] of Object.entries(entry.fields)) {
+      if (KNOWN_FIELD_IDS.has(key)) {
+        continue;
+      }
+
+      extraFields[key] = toJsonValue(value);
+    }
+
+    return {
+      entryId: entry.sys.id,
+      name: asString(entry.fields.name),
+      type: asString(entry.fields.type),
+      subject: asString(entry.fields.subject),
+      ageGroup: asString(entry.fields.ageGroup),
+      stage: asString(entry.fields.stage),
+      entryName: asString(entry.fields.entryName),
+      requiresAssessment: entry.fields.requiresAssessment === true,
+      ...(typeof entry.fields.time === "number" && Number.isInteger(entry.fields.time)
+        ? { time: entry.fields.time } : {}),
+      fields: extraFields,
+    };
+  } catch (error) {
+    const status = (error as { sys?: { id?: string }; response?: { status?: number } })
+      .sys?.id;
+    const httpStatus = (error as { response?: { status?: number } }).response
+      ?.status;
+
+    if (status === "NotFound" || httpStatus === 404) {
+      return null;
+    }
+
+    throw error;
+  }
+}
