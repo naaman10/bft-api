@@ -17,13 +17,17 @@ export const learnRoutes = new Hono<AppEnv>();
 
 learnRoutes.get("/user", requireAuth, async (c) => {
   const user = c.get("user");
+  console.log('[DEBUG] /learn/user called for user:', user.id);
   
   // Fetch student and completed assessments
   let completedAssessments: Awaited<ReturnType<typeof getCompletedAssessmentsForStudent>> = [];
   try {
     const student = await getStudentByNeonUserId(user.id);
+    console.log('[DEBUG] Student found:', student ? student.id : 'null');
     if (student) {
       completedAssessments = await getCompletedAssessmentsForStudent(student.id);
+    } else {
+      console.log('[DEBUG] No student record found for neon user:', user.id);
     }
   } catch (error) {
     console.error("Error fetching completed assessments:", error);
@@ -35,6 +39,8 @@ learnRoutes.get("/user", requireAuth, async (c) => {
     getTotalPointsForNeonUser(user.id),
     getTargetPointsForNeonUser(user.id),
   ]);
+  
+  console.log('[DEBUG] Returning', completedAssessments.length, 'completed assessments');
   
   const body: SessionResponse = {
     authenticated: true,
