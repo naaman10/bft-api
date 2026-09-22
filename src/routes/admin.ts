@@ -202,6 +202,7 @@ adminRoutes.get("/content", requireAdmin, async (c) => {
       const item = contentById.get(enrollment.contentId);
 
       return {
+        enrollmentID: enrollment.id,
         entryId: enrollment.contentId,
         name: item?.name ?? "",
         type: item?.type ?? "",
