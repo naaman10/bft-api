@@ -427,7 +427,7 @@ export async function saveLearnProgress(neonUserId: string, contentId: string,
   // enrollment and completion so a concurrent submission cannot unlock editing.
   for (let attempt = 0; attempt < 4; attempt++) {
     const rows = await sql`
-      SELECT e.id, e.progress, e.progress_status, e.status, s.name AS student_name, s.email AS student_email
+      SELECT e.id, e.progress::text AS progress_text, e.progress, e.progress_status, e.status, s.name AS student_name, s.email AS student_email
       FROM enrollments e JOIN students s ON s.id = e.student_id
       WHERE s.neon_user_id = ${neonUserId}::uuid AND e.content_id = ${contentId}
     `;
@@ -468,7 +468,7 @@ export async function saveLearnProgress(neonUserId: string, contentId: string,
         WHERE id = ${row.id}::uuid
           AND status = 'enrolled'
           AND progress_status IN ('not_started', 'in_progress')
-          AND progress = ${JSON.stringify(row.progress)}::jsonb
+          AND progress::text = ${row.progress_text}
         RETURNING student_id, progress, progress_status, completed_at
       ), inserted_points AS (
         INSERT INTO points (
