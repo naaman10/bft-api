@@ -440,6 +440,188 @@ Questions are recursively extracted from the Contentful content structure. Only 
 
 **Security note**: This endpoint exposes correct answers and is restricted to admin use only. Student-facing endpoints continue to use answer-redacted content.
 
+### Assessment System
+
+The assessment system allows admin users to grade student enrollments that require manual assessment (`requiresAssessment: true` in Contentful). It supports grading individual questions, providing question-level and overall feedback, and completing assessments to award points.
+
+#### `POST /admin/assessment/:enrollmentId`
+
+Save or update an assessment with grades and feedback. Can be called multiple times before completion.
+
+**Request**
+
+```
+POST /admin/assessment/9c2e1b44-0a1f-4d3c-8e7b-2a6d5c4b3a21
+X-Admin-Api-Key: <ADMIN_API_KEY>
+Content-Type: application/json
+```
+
+```json
+{
+  "assessedBy": "admin-user-uuid",
+  "questionGrades": [
+    {
+      "questionId": "question-entry-id-1",
+      "pointsEarned": 2,
+      "pointsAvailable": 2
+    },
+    {
+      "questionId": "question-entry-id-2",
+      "pointsEarned": 1,
+      "pointsAvailable": 3
+    }
+  ],
+  "questionFeedback": [
+    {
+      "questionId": "question-entry-id-2",
+      "feedback": "Good effort, but you missed the final step."
+    }
+  ],
+  "overallFeedback": "Overall, you demonstrated good understanding of the concepts."
+}
+```
+
+All fields except `assessedBy` are optional. Grades and feedback can be updated by calling the endpoint again.
+
+**200**
+
+```json
+{
+  "assessment": {
+    "id": "assessment-uuid",
+    "enrollmentId": "9c2e1b44-0a1f-4d3c-8e7b-2a6d5c4b3a21",
+    "assessedBy": "admin-user-uuid",
+    "status": "in_progress",
+    "startedAt": "2026-09-22T13:00:00.000Z",
+    "completedAt": null,
+    "createdAt": "2026-09-22T13:00:00.000Z",
+    "updatedAt": "2026-09-22T13:05:00.000Z"
+  },
+  "questionGrades": [...],
+  "questionFeedback": [...],
+  "overallFeedback": "Overall, you demonstrated good understanding of the concepts."
+}
+```
+
+**400** if question IDs are invalid, points are out of range, or the request body is malformed. **403** if the enrollment is not ready for assessment (`progressStatus` must be `to_assess` or `assessed`) or the content doesn't require assessment. **404** if the enrollment or content is not found.
+
+#### `POST /admin/assessment/:enrollmentId/complete`
+
+Complete an assessment, updating the enrollment to `assessed` status and recording points.
+
+**Request**
+
+```
+POST /admin/assessment/9c2e1b44-0a1f-4d3c-8e7b-2a6d5c4b3a21/complete
+X-Admin-Api-Key: <ADMIN_API_KEY>
+Content-Type: application/json
+```
+
+```json
+{
+  "assessedBy": "admin-user-uuid"
+}
+```
+
+**200**
+
+```json
+{
+  "assessment": {
+    "id": "assessment-uuid",
+    "enrollmentId": "9c2e1b44-0a1f-4d3c-8e7b-2a6d5c4b3a21",
+    "assessedBy": "admin-user-uuid",
+    "status": "completed",
+    "startedAt": "2026-09-22T13:00:00.000Z",
+    "completedAt": "2026-09-22T13:10:00.000Z",
+    "createdAt": "2026-09-22T13:00:00.000Z",
+    "updatedAt": "2026-09-22T13:10:00.000Z"
+  },
+  "questionGrades": [...],
+  "questionFeedback": [...],
+  "overallFeedback": "..."
+}
+```
+
+Completion performs three actions atomically:
+1. Updates assessment status to `completed`
+2. Updates enrollment `progressStatus` to `assessed`
+3. Creates `points` records (source: `assessment`) for all graded questions
+
+**400** if any required questions are missing grades. **404** if the assessment doesn't exist. **409** if the assessment is already completed.
+
+#### `GET /admin/assessment/:enrollmentId`
+
+Retrieve an existing assessment.
+
+**Request**
+
+```
+GET /admin/assessment/9c2e1b44-0a1f-4d3c-8e7b-2a6d5c4b3a21
+X-Admin-Api-Key: <ADMIN_API_KEY>
+```
+
+**200** — Same structure as save/complete responses. **404** if no assessment exists for this enrollment.
+
+#### `POST /admin/enrollment/:enrollmentId/feedback`
+
+Add general feedback to an enrollment. Unlike assessments, feedback can be added to any enrollment regardless of `requiresAssessment`.
+
+**Request**
+
+```
+POST /admin/enrollment/9c2e1b44-0a1f-4d3c-8e7b-2a6d5c4b3a21/feedback
+X-Admin-Api-Key: <ADMIN_API_KEY>
+Content-Type: application/json
+```
+
+```json
+{
+  "feedback": "Keep up the good work! Your progress is excellent.",
+  "createdBy": "admin-user-uuid"
+}
+```
+
+**201**
+
+```json
+{
+  "success": true
+}
+```
+
+Multiple feedback entries can be added over time. **404** if the enrollment doesn't exist.
+
+#### `GET /admin/enrollment/:enrollmentId/feedback`
+
+List all feedback for an enrollment, newest first.
+
+**Request**
+
+```
+GET /admin/enrollment/9c2e1b44-0a1f-4d3c-8e7b-2a6d5c4b3a21/feedback
+X-Admin-Api-Key: <ADMIN_API_KEY>
+```
+
+**200**
+
+```json
+{
+  "feedback": [
+    {
+      "id": "feedback-uuid",
+      "enrollmentId": "9c2e1b44-0a1f-4d3c-8e7b-2a6d5c4b3a21",
+      "feedback": "Keep up the good work! Your progress is excellent.",
+      "createdBy": "admin-user-uuid",
+      "createdAt": "2026-09-22T14:00:00.000Z",
+      "updatedAt": "2026-09-22T14:00:00.000Z"
+    }
+  ]
+}
+```
+
+Run `npm run migrate` after deploying to create the assessment tables. See [docs/assessment-system.md](docs/assessment-system.md) for detailed documentation.
+
 ## Project structure
 
 ```
