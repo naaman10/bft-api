@@ -1,6 +1,6 @@
 import { getDb } from "./db.js";
 import { getEnrollmentById, type EnrollmentWithStudent } from "./enrollments.js";
-import { getContentMarkingScheme } from "./content.js";
+import { getContentMarkingScheme, getContentNamesByIds } from "./content.js";
 
 export type AssessmentStatus = "in_progress" | "completed";
 
@@ -552,5 +552,55 @@ export async function getEnrollmentFeedback(
     createdBy: String(row.created_by),
     createdAt: toIso(row.created_at as string | Date) ?? "",
     updatedAt: toIso(row.updated_at as string | Date) ?? "",
+  }));
+}
+
+export type CompletedAssessment = {
+  assessmentId: string;
+  enrollmentName: string;
+  pointsScored: number;
+  pointsAvailable: number;
+};
+
+type CompletedAssessmentRow = {
+  assessment_id: string;
+  content_id: string;
+  points_scored: number;
+  points_available: number;
+};
+
+export async function getCompletedAssessmentsForStudent(
+  studentId: string
+): Promise<CompletedAssessment[]> {
+  const sql = getDb();
+
+  const rows = await sql`
+    SELECT
+      a.id AS assessment_id,
+      e.content_id,
+      COALESCE(SUM(aqg.points_earned), 0) AS points_scored,
+      COALESCE(SUM(aqg.points_available), 0) AS points_available
+    FROM assessments a
+    JOIN enrollments e ON e.id = a.enrollment_id
+    LEFT JOIN assessment_question_grades aqg ON aqg.assessment_id = a.id
+    WHERE a.status = 'completed'
+      AND e.student_id = ${studentId}::uuid
+    GROUP BY a.id, e.content_id
+    ORDER BY a.completed_at DESC
+  ` as CompletedAssessmentRow[];
+
+  if (rows.length === 0) {
+    return [];
+  }
+
+  // Fetch content names from Contentful
+  const contentIds = rows.map((row) => row.content_id);
+  const contentNames = await getContentNamesByIds(contentIds);
+
+  return rows.map((row) => ({
+    assessmentId: row.assessment_id,
+    enrollmentName: contentNames.get(row.content_id) ?? "",
+    pointsScored: Number(row.points_scored),
+    pointsAvailable: Number(row.points_available),
   }));
 }

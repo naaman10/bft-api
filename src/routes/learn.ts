@@ -9,24 +9,40 @@ import {
   listLearnEnrollmentsForNeonUser,
 } from "../lib/enrollments.js";
 import { getTotalPointsForNeonUser } from "../lib/points.js";
-import { getTargetPointsForNeonUser } from "../lib/students.js";
+import { getTargetPointsForNeonUser, getStudentByNeonUserId } from "../lib/students.js";
+import { getCompletedAssessmentsForStudent } from "../lib/assessments.js";
 import type { AppEnv, SessionResponse } from "../types.js";
 
 export const learnRoutes = new Hono<AppEnv>();
 
 learnRoutes.get("/user", requireAuth, async (c) => {
   const user = c.get("user");
+  
+  // Fetch student and completed assessments
+  let completedAssessments: Awaited<ReturnType<typeof getCompletedAssessmentsForStudent>> = [];
+  try {
+    const student = await getStudentByNeonUserId(user.id);
+    if (student) {
+      completedAssessments = await getCompletedAssessmentsForStudent(student.id);
+    }
+  } catch (error) {
+    console.error("Error fetching completed assessments:", error);
+    // Continue without assessments rather than failing the entire request
+  }
+
   const [enrollments, totalPoints, targetPoints] = await Promise.all([
     listLearnEnrollmentsForNeonUser(user.id),
     getTotalPointsForNeonUser(user.id),
     getTargetPointsForNeonUser(user.id),
   ]);
+  
   const body: SessionResponse = {
     authenticated: true,
     user,
     enrollments,
     totalPoints,
     targetPoints,
+    completedAssessments,
   };
 
   return c.json(body);
