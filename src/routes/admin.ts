@@ -360,6 +360,21 @@ adminRoutes.post("/review/:id", requireAdmin, async (c) => {
     return c.json({ error: "Enrollment not found." }, 404);
   }
 
+  // Get raw Contentful entry with full depth to ensure nested questions are included
+  const { getContentful } = await import("../lib/contentful.js");
+  const client = getContentful();
+  
+  let rawEntry;
+  try {
+    rawEntry = await client.getEntry(enrollment.contentId, { include: 10 });
+  } catch (error: any) {
+    if (error.sys?.id === "NotFound" || error.response?.status === 404) {
+      return c.json({ error: "Content not found." }, 404);
+    }
+    throw error;
+  }
+
+  // Also get serialized content for metadata
   const content = await getContentEntryWithAnswers(enrollment.contentId);
 
   if (!content) {
@@ -380,32 +395,36 @@ adminRoutes.post("/review/:id", requireAdmin, async (c) => {
   const questions: QuestionWithAnswers[] = [];
   const progressItems = enrollment.progress.items;
 
-  function extractQuestions(value: unknown, collected: QuestionWithAnswers[]): void {
+  // Extract questions from raw Contentful entry structure
+  function extractQuestionsFromRaw(value: unknown, collected: QuestionWithAnswers[], seen = new WeakSet<object>()): void {
     if (Array.isArray(value)) {
       for (const item of value) {
-        extractQuestions(item, collected);
+        extractQuestionsFromRaw(item, collected, seen);
       }
       return;
     }
 
-    if (!value || typeof value !== "object") {
+    if (!value || typeof value !== "object" || seen.has(value)) {
       return;
     }
 
+    seen.add(value);
     const record = value as Record<string, unknown>;
-    const contentType = record.contentType;
-    const entryId = record.entryId;
+    const sys = record.sys as 
+      | { id?: string; contentType?: { sys?: { id?: string } } }
+      | undefined;
     const fields = record.fields as Record<string, unknown> | undefined;
+    const contentType = sys?.contentType?.sys?.id;
 
+    // Check if this is a question entry
     if (
       fields &&
-      entryId &&
-      typeof entryId === "string" &&
+      sys?.id &&
       (contentType === "question" || contentType === "questionMultipleChoice")
     ) {
       const points = fields.points;
       const correctAnswer = fields.answer;
-      const progressItem = progressItems[entryId];
+      const progressItem = progressItems[sys.id];
 
       if (
         correctAnswer !== undefined &&
@@ -414,7 +433,7 @@ adminRoutes.post("/review/:id", requireAdmin, async (c) => {
         points > 0
       ) {
         collected.push({
-          questionId: entryId,
+          questionId: sys.id,
           questionContent: fields,
           studentAnswer: progressItem?.answer,
           correctAnswer,
@@ -424,14 +443,18 @@ adminRoutes.post("/review/:id", requireAdmin, async (c) => {
           completedAt: progressItem?.completedAt,
         });
       }
+      return; // Don't traverse deeper into question fields
     }
 
+    // Recursively search through fields
     for (const child of Object.values(fields ?? record)) {
-      extractQuestions(child, collected);
+      extractQuestionsFromRaw(child, collected, seen);
     }
   }
 
-  extractQuestions(content.fields, questions);
+  // Extract from the raw entry's fields
+  const rawFields = rawEntry.fields as Record<string, unknown>;
+  extractQuestionsFromRaw(rawFields.sections, questions);
 
   return c.json({
     enrollment: {
