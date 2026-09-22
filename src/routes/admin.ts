@@ -512,6 +512,8 @@ adminRoutes.post("/review/:id", requireAdmin, async (c) => {
 });
 
 adminRoutes.post("/assessment/:enrollmentId", requireAdmin, async (c) => {
+  console.log('[DEBUG] POST /assessment/:enrollmentId called');
+  
   if (!env.DATABASE_URL) {
     return c.json({ error: "Database is not configured." }, 503);
   }
@@ -523,6 +525,7 @@ adminRoutes.post("/assessment/:enrollmentId", requireAdmin, async (c) => {
   const enrollmentId = z.string().uuid().safeParse(c.req.param("enrollmentId"));
 
   if (!enrollmentId.success) {
+    console.log('[DEBUG] Invalid enrollment ID format');
     return c.json({ error: "Invalid enrollment id." }, 400);
   }
 
@@ -530,12 +533,14 @@ adminRoutes.post("/assessment/:enrollmentId", requireAdmin, async (c) => {
   try {
     body = await c.req.json();
   } catch {
+    console.log('[DEBUG] Invalid JSON body');
     return c.json({ error: "Invalid JSON body." }, 400);
   }
 
   const parsed = saveAssessmentBody.safeParse(body);
 
   if (!parsed.success) {
+    console.log('[DEBUG] Request body validation failed:', parsed.error.issues);
     return c.json(
       {
         error: "Invalid request body.",
@@ -548,6 +553,8 @@ adminRoutes.post("/assessment/:enrollmentId", requireAdmin, async (c) => {
     );
   }
 
+  console.log('[DEBUG] Calling saveAssessment with validated data');
+  
   try {
     const result = await saveAssessment({
       enrollmentId: enrollmentId.data,
@@ -557,11 +564,14 @@ adminRoutes.post("/assessment/:enrollmentId", requireAdmin, async (c) => {
       overallFeedback: parsed.data.overallFeedback,
     });
 
+    console.log('[DEBUG] Assessment saved successfully');
     return c.json(result, 200);
   } catch (error) {
     if (error instanceof AssessmentError) {
+      console.log('[DEBUG] AssessmentError:', error.message, 'Status:', error.status);
       return c.json({ error: error.message }, error.status);
     }
+    console.error('[DEBUG] Unexpected error in saveAssessment:', error);
     throw error;
   }
 });

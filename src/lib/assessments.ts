@@ -143,17 +143,36 @@ export type SaveAssessmentInput = {
 export async function saveAssessment(
   input: SaveAssessmentInput
 ): Promise<AssessmentData> {
+  console.log('[DEBUG] saveAssessment called with:', {
+    enrollmentId: input.enrollmentId,
+    assessedBy: input.assessedBy,
+    hasQuestionGrades: !!input.questionGrades,
+    gradeCount: input.questionGrades?.length ?? 0,
+    hasFeedback: !!input.questionFeedback
+  });
+
   const sql = getDb();
 
   // Verify enrollment exists and get content info
   const enrollment = await getEnrollmentById(input.enrollmentId);
 
   if (!enrollment) {
+    console.log('[DEBUG] Enrollment not found:', input.enrollmentId);
     throw new AssessmentError(404, "Enrollment not found.");
   }
 
+  console.log('[DEBUG] Enrollment found:', {
+    enrollmentId: enrollment.id,
+    progressStatus: enrollment.progressStatus,
+    contentId: enrollment.contentId
+  });
+
   // Verify enrollment is in correct status
   if (enrollment.progressStatus !== "to_assess" && enrollment.progressStatus !== "assessed") {
+    console.log('[DEBUG] Enrollment not ready for assessment:', {
+      currentStatus: enrollment.progressStatus,
+      requiredStatus: 'to_assess or assessed'
+    });
     throw new AssessmentError(
       403,
       "Enrollment is not ready for assessment. Student must complete the content first."
@@ -164,10 +183,18 @@ export async function saveAssessment(
   const markingScheme = await getContentMarkingScheme(enrollment.contentId);
 
   if (!markingScheme) {
+    console.log('[DEBUG] Content marking scheme not found:', enrollment.contentId);
     throw new AssessmentError(404, "Content not found.");
   }
 
+  console.log('[DEBUG] Marking scheme found:', {
+    contentId: markingScheme.contentId,
+    requiresAssessment: markingScheme.requiresAssessment,
+    questionCount: markingScheme.questions.length
+  });
+
   if (!markingScheme.requiresAssessment) {
+    console.log('[DEBUG] Content does not require assessment');
     throw new AssessmentError(
       403,
       "This content does not require assessment."
@@ -220,6 +247,7 @@ export async function saveAssessment(
   }
 
   // Create or update assessment
+  console.log('[DEBUG] Creating/updating assessment in database');
   const assessmentRows = await sql`
     INSERT INTO assessments (enrollment_id, assessed_by, status)
     VALUES (${input.enrollmentId}::uuid, ${input.assessedBy}::uuid, 'in_progress')
@@ -238,6 +266,10 @@ export async function saveAssessment(
   `;
 
   const assessment = toAssessment(assessmentRows[0] as AssessmentRow);
+  console.log('[DEBUG] Assessment created/updated:', {
+    assessmentId: assessment.id,
+    status: assessment.status
+  });
 
   // Save question grades
   if (input.questionGrades && input.questionGrades.length > 0) {
