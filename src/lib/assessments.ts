@@ -1,3 +1,4 @@
+import { env } from "../config/env.js";
 import { getDb } from "./db.js";
 import { getEnrollmentById, type EnrollmentWithStudent } from "./enrollments.js";
 import { getContentMarkingScheme, getContentNamesByIds } from "./content.js";
@@ -572,7 +573,35 @@ type CompletedAssessmentRow = {
 export async function getCompletedAssessmentsForStudent(
   studentId: string
 ): Promise<CompletedAssessment[]> {
+  console.log('[DEBUG] getCompletedAssessmentsForStudent called with studentId:', studentId);
+  
+  if (!env.DATABASE_URL) {
+    console.log('[DEBUG] DATABASE_URL not configured');
+    return [];
+  }
+  
   const sql = getDb();
+
+  // First, check what assessments exist for this student
+  const debugRows = await sql`
+    SELECT 
+      a.id, 
+      a.status, 
+      e.student_id,
+      e.content_id
+    FROM assessments a
+    JOIN enrollments e ON e.id = a.enrollment_id
+    WHERE e.student_id = ${studentId}::uuid
+  `;
+  console.log('[DEBUG] Total assessments for student:', debugRows.length);
+  debugRows.forEach(row => {
+    console.log('[DEBUG] Assessment:', {
+      id: row.id,
+      status: row.status,
+      student_id: row.student_id,
+      content_id: row.content_id
+    });
+  });
 
   const rows = await sql`
     SELECT
@@ -589,18 +618,38 @@ export async function getCompletedAssessmentsForStudent(
     ORDER BY a.completed_at DESC
   ` as CompletedAssessmentRow[];
 
+  console.log('[DEBUG] Completed assessments query returned', rows.length, 'rows');
+
   if (rows.length === 0) {
     return [];
   }
 
   // Fetch content names from Contentful
   const contentIds = rows.map((row) => row.content_id);
-  const contentNames = await getContentNamesByIds(contentIds);
+  console.log('[DEBUG] Fetching content names for IDs:', contentIds);
+  
+  let contentNames = new Map<string, string>();
+  
+  if (env.CONTENTFUL_SPACE_ID && env.CONTENTFUL_ACCESS_TOKEN) {
+    try {
+      contentNames = await getContentNamesByIds(contentIds);
+      console.log('[DEBUG] Fetched', contentNames.size, 'content names');
+    } catch (error) {
+      console.error('[ERROR] Failed to fetch content names:', error);
+    }
+  } else {
+    console.log('[DEBUG] Contentful not configured, using content IDs as names');
+    // Use content IDs as fallback names
+    contentIds.forEach(id => contentNames.set(id, id));
+  }
 
-  return rows.map((row) => ({
+  const result = rows.map((row) => ({
     assessmentId: row.assessment_id,
-    enrollmentName: contentNames.get(row.content_id) ?? "",
+    enrollmentName: contentNames.get(row.content_id) ?? row.content_id,
     pointsScored: Number(row.points_scored),
     pointsAvailable: Number(row.points_available),
   }));
+
+  console.log('[DEBUG] Returning', result.length, 'completed assessments');
+  return result;
 }
