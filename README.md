@@ -337,6 +337,109 @@ Apply the schema before using this:
 npm run migrate
 ```
 
+### `POST /admin/review/:id`
+
+Retrieves complete assessment review data for a specific enrollment, including student answers and correct answers from Contentful. This endpoint allows admins to review completed assessments for grading and feedback purposes.
+
+**Request**
+
+```
+POST /admin/review/9c2e1b44-0a1f-4d3c-8e7b-2a6d5c4b3a21
+X-Admin-Api-Key: <ADMIN_API_KEY>
+Content-Type: application/json
+```
+
+```json
+{
+  "adminUserId": "admin-user-uuid"
+}
+```
+
+`:id` is the enrollment UUID (not the student ID or content ID). `adminUserId` is required for audit trail purposes.
+
+**200**
+
+```json
+{
+  "enrollment": {
+    "id": "9c2e1b44-0a1f-4d3c-8e7b-2a6d5c4b3a21",
+    "studentId": "3f1c0a8e-2b9d-4c11-9e4a-8a6b1d2c3e4f",
+    "contentId": "1rTsR3YCoLYlMHFGd0greW",
+    "status": "enrolled",
+    "progressStatus": "to_assess",
+    "enrolledAt": "2026-09-01T10:00:00.000Z",
+    "startedAt": "2026-09-01T10:05:00.000Z",
+    "completedAt": "2026-09-01T11:30:00.000Z",
+    "lastActivityAt": "2026-09-01T11:30:00.000Z"
+  },
+  "student": {
+    "id": "3f1c0a8e-2b9d-4c11-9e4a-8a6b1d2c3e4f",
+    "name": "Jane Student",
+    "email": "jane.student@example.com"
+  },
+  "content": {
+    "entryId": "1rTsR3YCoLYlMHFGd0greW",
+    "name": "Paper 1 Maths Mock Test",
+    "type": "Assessment",
+    "subject": "Maths",
+    "ageGroup": "GCSE",
+    "stage": "Key Stage 4",
+    "requiresAssessment": true
+  },
+  "sections": [],
+  "questions": [
+    {
+      "questionId": "question-entry-id-1",
+      "questionContent": {
+        "question": "What is 2 + 2?",
+        "points": 2
+      },
+      "studentAnswer": "4",
+      "correctAnswer": "4",
+      "points": 2,
+      "status": "completed",
+      "updatedAt": "2026-09-01T11:20:00.000Z",
+      "completedAt": "2026-09-01T11:20:00.000Z"
+    },
+    {
+      "questionId": "question-entry-id-2",
+      "questionContent": {
+        "question": "Solve for x: 3x + 5 = 14",
+        "points": 3
+      },
+      "studentAnswer": "3",
+      "correctAnswer": "3",
+      "points": 3,
+      "status": "completed",
+      "updatedAt": "2026-09-01T11:25:00.000Z",
+      "completedAt": "2026-09-01T11:25:00.000Z"
+    }
+  ]
+}
+```
+
+The response includes:
+
+- **enrollment**: Full enrollment record with all timestamps and status
+- **student**: Student's name and email for display
+- **content**: Contentful metadata for the assignment
+- **sections**: Complete Contentful sections array (includes reference materials and nested content)
+- **questions**: Array of all questions with both student answers and correct answers
+
+For each question:
+- `questionContent` contains the full Contentful question fields
+- `studentAnswer` is the student's submitted answer (may be string, number, array, or object; `undefined` if not answered)
+- `correctAnswer` is the authoritative answer from Contentful (admin-only, never exposed to students)
+- `points` is the maximum points available for the question
+- `status` shows completion state (`not_started`, `in_progress`, or `completed`)
+- `updatedAt` and `completedAt` track when the student worked on the question
+
+Questions are recursively extracted from the Contentful content structure. Only questions with correct answers and positive point values are included. Questions the student hasn't answered show `undefined` for `studentAnswer`.
+
+**400** if the enrollment ID is not a valid UUID or the request body is invalid. **401** if the admin key is missing or wrong. **404** if the enrollment or content entry does not exist. **503** if Contentful or the database is not configured.
+
+**Security note**: This endpoint exposes correct answers and is restricted to admin use only. Student-facing endpoints continue to use answer-redacted content.
+
 ## Project structure
 
 ```

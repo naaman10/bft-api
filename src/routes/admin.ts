@@ -282,7 +282,7 @@ adminRoutes.post("/enroll/:studentId", requireAdmin, async (c) => {
   }
 });
 
-adminRoutes.get("/review/:id", requireAdmin, async (c) => {
+adminRoutes.post("/review/:id", requireAdmin, async (c) => {
   if (!env.DATABASE_URL) {
     return c.json({ error: "Database is not configured." }, 503);
   }
