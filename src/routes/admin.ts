@@ -402,8 +402,9 @@ adminRoutes.post("/review/:id", requireAdmin, async (c) => {
         studentAnswer: progressItem?.answer
       });
 
+      // Include question if it has valid points, regardless of whether it has a correct answer
+      // (manually assessed questions don't have pre-defined correct answers)
       if (
-        correctAnswer !== undefined &&
         typeof points === "number" &&
         Number.isInteger(points) &&
         points > 0
@@ -412,7 +413,7 @@ adminRoutes.post("/review/:id", requireAdmin, async (c) => {
           questionId: sys.id,
           questionContent: fields,
           studentAnswer: progressItem?.answer,
-          correctAnswer,
+          correctAnswer: correctAnswer !== undefined ? correctAnswer : null,
           points,
           status: progressItem?.status ?? "not_started",
           updatedAt: progressItem?.updatedAt,
@@ -420,8 +421,7 @@ adminRoutes.post("/review/:id", requireAdmin, async (c) => {
         });
       } else {
         console.log('[DEBUG] Question not added:', {
-          reason: correctAnswer === undefined ? 'no correctAnswer' : 
-                  !(typeof points === "number") ? 'points not number' :
+          reason: !(typeof points === "number") ? 'points not number' :
                   !Number.isInteger(points) ? 'points not integer' :
                   !(points > 0) ? 'points not positive' : 'unknown'
         });
