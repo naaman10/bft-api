@@ -337,15 +337,16 @@ function collectMarkingQuestions(
   ) {
     const points = fields.points;
 
+    // Include questions with valid points, regardless of whether they have correct answers
+    // (manually assessed questions don't have pre-defined correct answers)
     if (
-      fields.answer !== undefined &&
       typeof points === "number" &&
       Number.isInteger(points) &&
       points > 0
     ) {
       questions.push({
         questionId: sys.id,
-        correctAnswer: fields.answer,
+        correctAnswer: fields.answer !== undefined ? fields.answer : null,
         points,
       });
     }
