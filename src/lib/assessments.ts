@@ -653,3 +653,159 @@ export async function getCompletedAssessmentsForStudent(
   console.log('[DEBUG] Returning', result.length, 'completed assessments');
   return result;
 }
+
+export type AssessmentDetailQuestion = {
+  questionId: string;
+  questionText: string;
+  pointsAvailable: number;
+  pointsEarned: number;
+  feedback: string | null;
+};
+
+export type AssessmentDetail = {
+  assessmentId: string;
+  enrollmentName: string;
+  totalPointsEarned: number;
+  totalPointsAvailable: number;
+  questions: AssessmentDetailQuestion[];
+  assessmentFeedback: string | null;
+  assessmentDate: string | null;
+};
+
+export async function getAssessmentDetailById(
+  assessmentId: string
+): Promise<AssessmentDetail | null> {
+  const sql = getDb();
+
+  const assessmentRows = await sql`
+    SELECT
+      a.id,
+      a.enrollment_id,
+      a.completed_at,
+      e.content_id
+    FROM assessments a
+    JOIN enrollments e ON e.id = a.enrollment_id
+    WHERE a.id = ${assessmentId}::uuid
+    LIMIT 1
+  `;
+
+  if (assessmentRows.length === 0) {
+    return null;
+  }
+
+  const row = assessmentRows[0];
+  if (!row) {
+    return null;
+  }
+  
+  const contentId = String(row.content_id);
+
+  let enrollmentName = contentId;
+  if (env.CONTENTFUL_SPACE_ID && env.CONTENTFUL_ACCESS_TOKEN) {
+    try {
+      const contentNames = await getContentNamesByIds([contentId]);
+      enrollmentName = contentNames.get(contentId) ?? contentId;
+    } catch (error) {
+      console.error('[ERROR] Failed to fetch content name:', error);
+    }
+  }
+
+  const gradeRows = await sql`
+    SELECT question_id, points_earned, points_available
+    FROM assessment_question_grades
+    WHERE assessment_id = ${assessmentId}::uuid
+  `;
+
+  const feedbackRows = await sql`
+    SELECT question_id, feedback
+    FROM assessment_question_feedback
+    WHERE assessment_id = ${assessmentId}::uuid
+  `;
+
+  const overallFeedbackRows = await sql`
+    SELECT feedback
+    FROM assessment_feedback
+    WHERE assessment_id = ${assessmentId}::uuid
+    LIMIT 1
+  `;
+
+  const feedbackMap = new Map<string, string>();
+  for (const fb of feedbackRows) {
+    feedbackMap.set(String(fb.question_id), String(fb.feedback));
+  }
+
+  let questionTextMap = new Map<string, string>();
+  if (env.CONTENTFUL_SPACE_ID && env.CONTENTFUL_ACCESS_TOKEN) {
+    try {
+      const { getContentful } = await import("./contentful.js");
+      const client = getContentful();
+      const entry = await client.getEntry(contentId, { include: 10 });
+      
+      const extractQuestionText = (value: unknown, collected: Map<string, string>, seen = new WeakSet<object>()): void => {
+        if (Array.isArray(value)) {
+          for (const item of value) {
+            extractQuestionText(item, collected, seen);
+          }
+          return;
+        }
+
+        if (!value || typeof value !== "object" || seen.has(value)) {
+          return;
+        }
+
+        seen.add(value);
+        const record = value as Record<string, unknown>;
+        const sys = record.sys as 
+          | { id?: string; contentType?: { sys?: { id?: string } } }
+          | undefined;
+        const fields = record.fields as Record<string, unknown> | undefined;
+        const contentType = sys?.contentType?.sys?.id;
+
+        if (
+          fields &&
+          sys?.id &&
+          (contentType === "question" || contentType === "questionMultipleChoice")
+        ) {
+          const text = fields.text || fields.question || fields.questionText;
+          if (text && typeof text === "string") {
+            collected.set(sys.id, text);
+          }
+          return;
+        }
+
+        for (const child of Object.values(fields ?? record)) {
+          extractQuestionText(child, collected, seen);
+        }
+      };
+
+      const rawFields = (entry.fields as unknown) as Record<string, unknown>;
+      extractQuestionText(rawFields, questionTextMap);
+    } catch (error) {
+      console.error('[ERROR] Failed to fetch question text from Contentful:', error);
+    }
+  }
+
+  const questions: AssessmentDetailQuestion[] = gradeRows.map((grade) => {
+    const questionId = String(grade.question_id);
+    return {
+      questionId,
+      questionText: questionTextMap.get(questionId) ?? questionId,
+      pointsAvailable: Number(grade.points_available),
+      pointsEarned: Number(grade.points_earned),
+      feedback: feedbackMap.get(questionId) ?? null,
+    };
+  });
+
+  const totalPointsEarned = questions.reduce((sum, q) => sum + q.pointsEarned, 0);
+  const totalPointsAvailable = questions.reduce((sum, q) => sum + q.pointsAvailable, 0);
+
+  return {
+    assessmentId: String(row.id),
+    enrollmentName,
+    totalPointsEarned,
+    totalPointsAvailable,
+    questions,
+    assessmentFeedback: overallFeedbackRows[0] ? String(overallFeedbackRows[0].feedback) : null,
+    assessmentDate: toIso(row.completed_at as string | Date | null),
+  };
+}
