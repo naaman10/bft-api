@@ -2,6 +2,7 @@ import { env } from "../config/env.js";
 import { getDb } from "./db.js";
 import { getEnrollmentById, type EnrollmentWithStudent } from "./enrollments.js";
 import { getContentMarkingScheme, getContentNamesByIds } from "./content.js";
+import { createNotification } from "./notifications.js";
 
 export type AssessmentStatus = "in_progress" | "completed";
 
@@ -496,6 +497,42 @@ export async function completeAssessment(
     throw new AssessmentError(500, "Failed to retrieve completed assessment.");
   }
 
+  // Create notification for completed assessment
+  try {
+    const totalPointsEarned = existing.questionGrades.reduce(
+      (sum, grade) => sum + grade.pointsEarned,
+      0
+    );
+    const totalPointsAvailable = existing.questionGrades.reduce(
+      (sum, grade) => sum + grade.pointsAvailable,
+      0
+    );
+    
+    // Get content name
+    const contentNames = await getContentNamesByIds([enrollment.contentId]);
+    const contentName = contentNames.get(enrollment.contentId) || enrollment.contentId;
+    
+    await createNotification({
+      studentId: enrollment.studentId,
+      type: 'assessment',
+      title: 'Assessment Graded',
+      message: `Your ${contentName} has been graded. You earned ${totalPointsEarned} points!`,
+      metadata: {
+        contentName,
+        pointsEarned: totalPointsEarned,
+        pointsAvailable: totalPointsAvailable,
+        hasFeedback: !!(existing.overallFeedback || existing.questionFeedback.length > 0),
+        assessedBy,
+      },
+      enrollmentId: enrollment.id,
+      assessmentId: existing.assessment.id,
+      contentId: enrollment.contentId,
+    });
+  } catch (error) {
+    console.error('Failed to create assessment completion notification:', error);
+    // Don't fail the completion if notification fails
+  }
+
   return result;
 }
 
@@ -517,6 +554,34 @@ export async function addEnrollmentFeedback(
     INSERT INTO enrollment_feedback (enrollment_id, feedback, created_by)
     VALUES (${enrollmentId}::uuid, ${feedback}, ${createdBy}::uuid)
   `;
+
+  // Create notification for feedback
+  try {
+    // Get content name
+    const contentNames = await getContentNamesByIds([enrollment.contentId]);
+    const contentName = contentNames.get(enrollment.contentId) || enrollment.contentId;
+    
+    // Create feedback preview (first 100 characters)
+    const feedbackPreview = feedback.length > 100 
+      ? feedback.substring(0, 100) + '...' 
+      : feedback;
+    
+    await createNotification({
+      studentId: enrollment.studentId,
+      type: 'feedback',
+      title: 'New Feedback',
+      message: `Your teacher left feedback on ${contentName}`,
+      metadata: {
+        contentName,
+        feedbackPreview,
+      },
+      enrollmentId: enrollment.id,
+      contentId: enrollment.contentId,
+    });
+  } catch (error) {
+    console.error('Failed to create feedback notification:', error);
+    // Don't fail the feedback creation if notification fails
+  }
 }
 
 export type EnrollmentFeedback = {

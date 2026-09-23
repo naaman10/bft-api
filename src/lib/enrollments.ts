@@ -16,6 +16,7 @@ import {
   getStudentById,
   getStudentByNeonUserId,
 } from "./students.js";
+import { createNotification } from "./notifications.js";
 
 export type EnrollmentStatus = "enrolled" | "withdrawn";
 export type ProgressStatus =
@@ -180,7 +181,42 @@ export async function enrollStudentInContent(
       updated_at
   `;
 
-  return (rows as EnrollmentRow[]).map(toEnrollment);
+  const enrollments = (rows as EnrollmentRow[]).map(toEnrollment);
+
+  // Create notifications for new enrollments
+  // Get content names from Contentful
+  let contentNames = new Map<string, string>();
+  if (env.CONTENTFUL_SPACE_ID && env.CONTENTFUL_ACCESS_TOKEN) {
+    try {
+      contentNames = await getContentNamesByIds(enrollments.map(e => e.contentId));
+    } catch (error) {
+      console.error('Failed to fetch content names for enrollment notifications:', error);
+    }
+  }
+
+  // Create a notification for each enrollment
+  for (const enrollment of enrollments) {
+    try {
+      const contentName = contentNames.get(enrollment.contentId) || 'New Content';
+      
+      await createNotification({
+        studentId: enrollment.studentId,
+        type: 'assignment',
+        title: 'New Assignment',
+        message: `You have been assigned: ${contentName}`,
+        metadata: {
+          contentName,
+        },
+        enrollmentId: enrollment.id,
+        contentId: enrollment.contentId,
+      });
+    } catch (error) {
+      console.error('Failed to create enrollment notification:', error);
+      // Don't fail the enrollment if notification fails
+    }
+  }
+
+  return enrollments;
 }
 
 export async function listAdminEnrollmentsForStudent(
@@ -539,6 +575,38 @@ export async function saveLearnProgress(neonUserId: string, contentId: string,
           notificationSent = false;
         }
       }
+
+      // Create notifications for point rewards (individual notifications, no batching)
+      const awardedPoints = parseSavedPointAwards(updated[0].points_awarded);
+      if (awardedPoints.length > 0) {
+        // Get student ID from the row
+        const studentId = String(updated[0].student_id);
+        const contentName = markingScheme?.contentName || contentId;
+
+        for (const award of awardedPoints) {
+          try {
+            await createNotification({
+              studentId,
+              type: 'reward',
+              title: 'Points Earned!',
+              message: `You earned ${award.pointsEarned} points for completing a question!`,
+              metadata: {
+                contentName,
+                pointsEarned: award.pointsEarned,
+                pointsAvailable: award.pointsAvailable,
+                questionId: award.questionId,
+                source: 'automatic',
+              },
+              enrollmentId: String(row.id),
+              contentId: contentId,
+            });
+          } catch (error) {
+            console.error('Failed to create points reward notification:', error);
+            // Don't fail the completion if notification fails
+          }
+        }
+      }
+
       return {
         ...(notificationSent !== undefined ? { notificationSent } : {}),
         ...(patch.action === "complete"

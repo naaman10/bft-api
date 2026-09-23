@@ -16,6 +16,7 @@ export type SessionResponse =
       totalPoints: number;
       targetPoints: number | null;
       completedAssessments: CompletedAssessment[];
+      unreadNotificationCount: number;
     }
   | {
       authenticated: false;
