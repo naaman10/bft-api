@@ -337,7 +337,7 @@ export async function markAllNotificationsAsRead(
  * Keeps unread notifications and recent read notifications (within retentionDays)
  */
 export async function deleteOldNotifications(
-  retentionDays: number = 90
+  retentionDays: number = 60
 ): Promise<number> {
   const sql = getDb();
   const rows = await sql`
@@ -454,6 +454,7 @@ await createNotification({
 
 ```typescript
 // In saveLearnProgress function, after points are awarded:
+// Create individual notifications for each point award (no batching)
 if (pointAwards.length > 0) {
   for (const award of pointAwards) {
     try {
@@ -600,9 +601,10 @@ components/
 
 ### 2. State Management
 
-- **Polling**: Simple approach - poll `/learn/notifications/unread-count` every 30-60 seconds
-- **WebSocket/SSE**: For real-time updates (future enhancement)
+- **Polling**: Poll `/learn/notifications/unread-count` every 60 seconds (chosen approach)
 - **Local state**: Track notifications in React state or global state (Redux/Zustand)
+
+**Note:** Real-time updates (WebSocket/SSE) are deferred to future enhancements if needed.
 
 ### 3. UI/UX Patterns
 
@@ -617,12 +619,17 @@ components/
 - "Mark all as read" button
 
 #### Notification Types Visual Design
+
+All notifications treated equally (no critical vs nice-to-have distinction):
+
 - **Assignment**: 📚 Blue - Book/document icon
 - **Assessment**: ✅ Green - Checkmark icon  
 - **Reward**: ⭐ Gold - Star/trophy icon
 - **Feedback**: 💬 Purple - Speech bubble icon
 - **Status Change**: 🔄 Gray - Refresh icon
 - **Milestone**: 🏆 Gold - Trophy icon
+
+**Note:** No notification sounds or special "critical" styling needed.
 
 ### 4. Navigation from Notifications
 
@@ -696,70 +703,52 @@ export function useNotifications() {
 
 ## Additional Features & Considerations
 
-### 1. Notification Preferences (Future Enhancement)
+### 1. Notification Preferences (Future Enhancement - Optional)
 
-Add a `notification_preferences` table:
+_Deferred: Only implement if students request customization_
 
-```sql
-CREATE TABLE IF NOT EXISTS notification_preferences (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  student_id UUID NOT NULL UNIQUE REFERENCES students(id) ON DELETE CASCADE,
-  
-  -- Per-type preferences
-  assignment_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-  assessment_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-  reward_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-  feedback_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-  status_change_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-  milestone_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-  
-  -- Delivery preferences (future)
-  email_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-  email_frequency TEXT DEFAULT 'immediate' 
-    CHECK (email_frequency IN ('immediate', 'daily_digest', 'weekly_digest', 'never')),
-  
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-```
+Add a `notification_preferences` table to allow students to enable/disable specific notification types.
 
-### 2. Email Notifications (Future Enhancement)
+### 2. Email Notifications (Future Enhancement - Optional)
 
-- Use existing Resend integration
-- Send email for critical notifications (assessment graded, new assignment)
-- Respect user email preferences
-- Daily/weekly digest options
+_Deferred: Not needed initially. No daily/weekly digest functionality required._
 
-### 3. Push Notifications (Future Enhancement)
+Could be added later if:
+- Students frequently miss in-app notifications
+- Parents/guardians need to be notified
+- Critical deadlines approach
+
+### 3. Push Notifications (Future Enhancement - Optional)
+
+_Deferred: Only needed if a mobile web app is developed_
 
 - Web Push API for browser notifications
 - Requires service worker setup
 - Store push subscriptions in database
 
-### 4. Real-time Updates
+### 4. Real-time Updates (Future Enhancement - Optional)
 
-Two approaches:
+_Decision: Start with polling (60-second interval)_
 
-#### Option A: Server-Sent Events (SSE)
-```typescript
-// src/routes/learn.ts
-learnRoutes.get("/notifications/stream", requireAuth, async (c) => {
-  // Establish SSE connection
-  // Stream new notifications as they're created
-});
-```
+Real-time push using WebSocket or Server-Sent Events can be added later if:
+- Students complain about notification delays
+- Time-sensitive features are added (live classes, instant messaging)
+- The engineering team has capacity for WebSocket infrastructure
 
-#### Option B: WebSocket
-- More complex but bidirectional
-- Requires WebSocket server setup (e.g., Socket.io)
-- Better for chat/real-time features
+**Current polling approach is adequate because:**
+- Notifications aren't urgent (waiting 30-60 seconds is acceptable)
+- Much simpler to implement and maintain
+- Most learning platforms successfully use polling
+- Can be upgraded to real-time later without changing the database schema
 
 ### 5. Notification Batching & Grouping
 
-For better UX, consider:
-- Batch multiple reward notifications: "You earned 15 points in Math Quiz" instead of 5 separate notifications
-- Group related notifications: "3 new assignments this week"
-- Implement in the `createNotification` function with deduplication logic
+_Decision: Not needed - show individual notifications_
+
+Each point reward, assignment, and assessment will create a separate notification. This provides:
+- Clear visibility of each achievement
+- Simple implementation (no batching logic needed)
+- Better engagement (students see each accomplishment)
 
 ### 6. Analytics & Monitoring
 
@@ -782,21 +771,22 @@ Add admin endpoint to see notification status:
 - Unread notification counts across all students
 - Notification effectiveness metrics
 
-### 8. Performance Optimization
+### 6. Performance Optimization
 
 - **Indexes**: Already included in schema for common queries
-- **Caching**: Cache unread counts in Redis (if needed)
+- **Caching**: Cache unread counts in Redis (if scaling issues arise)
 - **Pagination**: Implemented in API with limit/offset
-- **Archival**: Cleanup job to delete old read notifications (90+ days)
+- **Archival**: Cleanup job to delete old read notifications (60+ days)
+- **Polling interval**: 60 seconds strikes balance between freshness and server load
 
-### 9. Testing Strategy
+### 7. Testing Strategy
 
 - **Unit tests**: Test notification creation logic
 - **Integration tests**: Test API endpoints
 - **E2E tests**: Test frontend notification flow
-- **Load tests**: Ensure notification queries scale
+- **Load tests**: Ensure notification queries scale with 60s polling
 
-### 10. Migration Path
+### 8. Migration Path
 
 1. **Phase 1**: Database migration + basic notification library
 2. **Phase 2**: Integrate notifications into enrollment/assessment flows
@@ -859,24 +849,21 @@ Add admin endpoint to see notification status:
 - [ ] Admin analytics dashboard
 - [ ] Notification batching/grouping
 
-## Questions to Consider
+## Implementation Decisions Summary
 
-1. **Notification Retention**: How long should read notifications be kept? (Suggested: 90 days)
+### ✅ Decided
 
-2. **Batch Notifications**: Should multiple similar notifications be grouped? (e.g., "You earned 15 points" vs 3 separate 5-point notifications)
+1. **Notification Retention**: **60 days** for read notifications
+2. **Batch Notifications**: **No batching** - individual notifications for each event
+3. **Critical vs Non-Critical**: **All equal** - no special styling or priority
+4. **Notification Sounds**: **No sounds** - visual indicators only
+5. **Real-time vs Polling**: **Polling** - 60-second interval
+6. **Email Digest**: **Not needed** - in-app only
 
-3. **Critical vs Non-Critical**: Should some notifications be more prominent? (Assessment grading = critical, milestone = nice-to-have)
+### 🤔 Still to Consider
 
-4. **Notification Sounds**: Should the frontend play a sound for new notifications?
-
-5. **Mobile Experience**: Will this be used on mobile? Consider mobile-specific UX patterns.
-
-6. **Offline Support**: Should notifications be cached for offline viewing?
-
-7. **Localization**: Will notifications need to support multiple languages?
-
-8. **Admin Notifications**: Should admins receive notifications too? (e.g., "Student completed assignment")
-
-9. **Digest Mode**: Should students receive a daily/weekly email digest of notifications instead of individual notifications?
-
-10. **Undo Actions**: Should students be able to dismiss/delete notifications permanently?
+1. **Mobile Experience**: Will this be used on mobile? Consider mobile-specific UX patterns.
+2. **Offline Support**: Should notifications be cached for offline viewing?
+3. **Localization**: Will notifications need to support multiple languages?
+4. **Admin Notifications**: Should admins receive notifications too? (e.g., "Student completed assignment")
+5. **Undo Actions**: Should students be able to dismiss/delete notifications permanently?

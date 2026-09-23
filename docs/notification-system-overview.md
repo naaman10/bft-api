@@ -240,12 +240,11 @@ function NotificationBell() {
 
 ## 🚀 Future Enhancements
 
-- **Real-time Updates**: WebSocket or Server-Sent Events
-- **Email Notifications**: Daily/weekly digest via Resend
-- **Push Notifications**: Browser push API
-- **Preferences**: Per-type notification settings
-- **Batching**: Group similar notifications
-- **Admin Dashboard**: View notification analytics
+- **Real-time Updates**: WebSocket or Server-Sent Events (if instant delivery becomes important)
+- **Email Notifications**: Individual email alerts for critical notifications (if requested)
+- **Push Notifications**: Browser push API (if mobile web app is developed)
+- **Preferences**: Per-type notification settings (if students request customization)
+- **Admin Dashboard**: View notification analytics (engagement, read rates, etc.)
 
 ## 📊 Metrics to Track
 
@@ -255,13 +254,13 @@ function NotificationBell() {
 - Click-through rate to content
 - Unread notification distribution
 
-## ❓ Key Decisions Needed
+## ✅ Key Decisions Made
 
-1. **Retention**: How long to keep read notifications? (Suggest: 90 days)
-2. **Batching**: Group multiple point rewards into one notification?
-3. **Critical vs Nice-to-have**: Different styles/sounds for important notifications?
-4. **Digest Mode**: Offer daily/weekly email digest option?
-5. **Real-time**: Implement immediately or start with polling?
+1. **Retention**: Keep read notifications for **60 days** (then auto-delete)
+2. **Batching**: **Not needed** - show individual notifications for each point reward
+3. **Critical vs Nice-to-have**: **Not needed** - all notifications treated equally
+4. **Digest Mode**: **Not needed** - no email digest functionality
+5. **Real-time**: **Start with polling** (60-second interval) - simpler implementation, adequate for educational context
 
 ## 📚 Related Documentation
 
