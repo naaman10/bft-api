@@ -10,7 +10,7 @@ import {
 } from "../lib/enrollments.js";
 import { getTotalPointsForNeonUser } from "../lib/points.js";
 import { getTargetPointsForNeonUser, getStudentByNeonUserId } from "../lib/students.js";
-import { getCompletedAssessmentsForStudent } from "../lib/assessments.js";
+import { getCompletedAssessmentsForStudent, getAssessmentDetailById } from "../lib/assessments.js";
 import type { AppEnv, SessionResponse } from "../types.js";
 import {
   getNotificationsForStudent,
@@ -129,6 +129,31 @@ learnRoutes.patch("/content/:id/progress", requireAuth, async (c) => {
     if (error instanceof ProgressSaveError) return c.json({ error: error.message }, error.status);
     throw error;
   }
+});
+
+// GET /learn/assessment/:assessmentId - Get assessment details
+learnRoutes.get("/assessment/:assessmentId", requireAuth, async (c) => {
+  if (!env.DATABASE_URL) {
+    return c.json({ error: "Database is not configured." }, 503);
+  }
+
+  if (!env.CONTENTFUL_SPACE_ID || !env.CONTENTFUL_ACCESS_TOKEN) {
+    return c.json({ error: "Contentful is not configured." }, 503);
+  }
+
+  const assessmentId = c.req.param("assessmentId").trim();
+
+  if (!assessmentId) {
+    return c.json({ error: "Assessment not found." }, 404);
+  }
+
+  const assessment = await getAssessmentDetailById(assessmentId);
+
+  if (!assessment) {
+    return c.json({ error: "Assessment not found." }, 404);
+  }
+
+  return c.json(assessment);
 });
 
 // Notification endpoints
