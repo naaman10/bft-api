@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { authMiddleware } from "../middleware/auth.js";
+import { requireAuth } from "../middleware/require-auth.js";
 import {
   createGemHuntSession,
   getGemHuntSession,
@@ -9,11 +9,11 @@ import {
   getLeaderboard,
   saveLevelCompletion,
 } from "../lib/gem-hunt.js";
+import type { AppEnv } from "../types.js";
 
-const gemHunt = new Hono();
+const gemHunt = new Hono<AppEnv>();
 
-// All routes require authentication
-gemHunt.use("*", authMiddleware);
+gemHunt.use("*", requireAuth);
 
 /**
  * POST /gem-hunt/sessions
@@ -21,27 +21,23 @@ gemHunt.use("*", authMiddleware);
  */
 gemHunt.post("/sessions", async (c) => {
   try {
-    const neonUserId = c.get("neonUserId");
+    const user = c.get("user");
     const body = await c.req.json();
     const { yearGroup, subject } = body;
 
     if (!yearGroup || !subject) {
-      return c.json(
-        { error: "yearGroup and subject are required" },
-        400
-      );
+      return c.json({ error: "yearGroup and subject are required" }, 400);
     }
 
-    const session = await createGemHuntSession(neonUserId, yearGroup, subject);
-
+    const session = await createGemHuntSession(user.id, yearGroup, subject);
     return c.json(session, 201);
   } catch (error) {
     console.error("Error creating Gem Hunt session:", error);
-    
+
     if (error instanceof Error && error.message.includes("not found")) {
       return c.json({ error: "Student not found" }, 404);
     }
-    
+
     return c.json({ error: "Failed to create session" }, 500);
   }
 });
@@ -52,10 +48,9 @@ gemHunt.post("/sessions", async (c) => {
  */
 gemHunt.get("/sessions/:id", async (c) => {
   try {
-    const neonUserId = c.get("neonUserId");
+    const user = c.get("user");
     const sessionId = c.req.param("id");
-
-    const session = await getGemHuntSession(neonUserId, sessionId);
+    const session = await getGemHuntSession(user.id, sessionId);
 
     if (!session) {
       return c.json({ error: "Session not found" }, 404);
@@ -74,20 +69,18 @@ gemHunt.get("/sessions/:id", async (c) => {
  */
 gemHunt.patch("/sessions/:id", async (c) => {
   try {
-    const neonUserId = c.get("neonUserId");
+    const user = c.get("user");
     const sessionId = c.req.param("id");
     const updates = await c.req.json();
-
-    const session = await updateSessionProgress(neonUserId, sessionId, updates);
-
+    const session = await updateSessionProgress(user.id, sessionId, updates);
     return c.json(session);
   } catch (error) {
     console.error("Error updating Gem Hunt session:", error);
-    
+
     if (error instanceof Error && error.message.includes("not found")) {
       return c.json({ error: "Session not found or unauthorized" }, 404);
     }
-    
+
     return c.json({ error: "Failed to update session" }, 500);
   }
 });
@@ -114,20 +107,22 @@ gemHunt.get("/questions", async (c) => {
     const difficulty = difficultyStr ? parseInt(difficultyStr) : undefined;
 
     if (isNaN(count) || count < 1 || count > 20) {
-      return c.json(
-        { error: "count must be between 1 and 20" },
-        400
-      );
+      return c.json({ error: "count must be between 1 and 20" }, 400);
     }
 
-    if (difficulty !== undefined && (isNaN(difficulty) || difficulty < 1 || difficulty > 3)) {
-      return c.json(
-        { error: "difficulty must be 1, 2, or 3" },
-        400
-      );
+    if (
+      difficulty !== undefined &&
+      (isNaN(difficulty) || difficulty < 1 || difficulty > 3)
+    ) {
+      return c.json({ error: "difficulty must be 1, 2, or 3" }, 400);
     }
 
-    const questions = await getRandomQuestions(yearGroup, subject, count, difficulty);
+    const questions = await getRandomQuestions(
+      yearGroup,
+      subject,
+      count,
+      difficulty
+    );
 
     return c.json({ questions });
   } catch (error) {
@@ -153,15 +148,14 @@ gemHunt.post("/questions/validate", async (c) => {
     }
 
     const result = await validateAnswer(sessionId, questionId, answer);
-
     return c.json(result);
   } catch (error) {
     console.error("Error validating answer:", error);
-    
+
     if (error instanceof Error && error.message.includes("not found")) {
       return c.json({ error: "Question not found" }, 404);
     }
-    
+
     return c.json({ error: "Failed to validate answer" }, 500);
   }
 });
@@ -172,7 +166,7 @@ gemHunt.post("/questions/validate", async (c) => {
  */
 gemHunt.post("/levels/complete", async (c) => {
   try {
-    const neonUserId = c.get("neonUserId");
+    const user = c.get("user");
     const body = await c.req.json();
     const {
       sessionId,
@@ -201,7 +195,7 @@ gemHunt.post("/levels/complete", async (c) => {
     }
 
     const result = await saveLevelCompletion(
-      neonUserId,
+      user.id,
       sessionId,
       levelNumber,
       gemsCollected,
@@ -213,11 +207,11 @@ gemHunt.post("/levels/complete", async (c) => {
     return c.json(result);
   } catch (error) {
     console.error("Error saving level completion:", error);
-    
+
     if (error instanceof Error && error.message.includes("not found")) {
       return c.json({ error: "Session not found" }, 404);
     }
-    
+
     return c.json({ error: "Failed to save level completion" }, 500);
   }
 });
@@ -242,10 +236,7 @@ gemHunt.get("/leaderboard", async (c) => {
     const limit = limitStr ? parseInt(limitStr) : 100;
 
     if (isNaN(limit) || limit < 1 || limit > 1000) {
-      return c.json(
-        { error: "limit must be between 1 and 1000" },
-        400
-      );
+      return c.json({ error: "limit must be between 1 and 1000" }, 400);
     }
 
     const leaderboard = await getLeaderboard(yearGroup, subject, limit);

@@ -30,6 +30,33 @@ export type AnswerValidation = {
   movesEarned: number;
 };
 
+function asIso(value: unknown): string {
+  if (value instanceof Date) return value.toISOString();
+  return String(value);
+}
+
+function asIsoOrNull(value: unknown): string | null {
+  if (value == null) return null;
+  return asIso(value);
+}
+
+function mapSessionRow(row: Record<string, unknown>): GemHuntSession {
+  return {
+    id: String(row.id),
+    studentId: String(row.studentId),
+    yearGroup: String(row.yearGroup),
+    subject: String(row.subject),
+    currentLevel: Number(row.currentLevel),
+    totalGems: Number(row.totalGems),
+    livesRemaining: Number(row.livesRemaining),
+    movesRemaining: Number(row.movesRemaining),
+    startedAt: asIso(row.startedAt),
+    lastPlayedAt: asIso(row.lastPlayedAt),
+    completed: Boolean(row.completed),
+    completedAt: asIsoOrNull(row.completedAt),
+  };
+}
+
 /**
  * Create a new Gem Hunt game session
  */
@@ -64,19 +91,11 @@ export async function createGemHuntSession(
   `;
 
   const session = rows[0];
-  
-  return {
-    ...session,
-    startedAt: session.startedAt instanceof Date 
-      ? session.startedAt.toISOString() 
-      : session.startedAt,
-    lastPlayedAt: session.lastPlayedAt instanceof Date 
-      ? session.lastPlayedAt.toISOString() 
-      : session.lastPlayedAt,
-    completedAt: session.completedAt instanceof Date 
-      ? session.completedAt.toISOString() 
-      : session.completedAt,
-  };
+  if (!session) {
+    throw new Error("Failed to create session");
+  }
+
+  return mapSessionRow(session as Record<string, unknown>);
 }
 
 /**
@@ -118,19 +137,11 @@ export async function getGemHuntSession(
   }
 
   const session = rows[0];
-  
-  return {
-    ...session,
-    startedAt: session.startedAt instanceof Date 
-      ? session.startedAt.toISOString() 
-      : session.startedAt,
-    lastPlayedAt: session.lastPlayedAt instanceof Date 
-      ? session.lastPlayedAt.toISOString() 
-      : session.lastPlayedAt,
-    completedAt: session.completedAt instanceof Date 
-      ? session.completedAt.toISOString() 
-      : session.completedAt,
-  };
+  if (!session) {
+    return null;
+  }
+
+  return mapSessionRow(session as Record<string, unknown>);
 }
 
 /**
@@ -192,6 +203,10 @@ export async function validateAnswer(
   }
 
   const question = questionRows[0];
+  if (!question) {
+    throw new Error("Question not found");
+  }
+
   const normalizedAnswer = userAnswer.trim().toLowerCase();
   const correctAnswer = String(question.correct_answer).trim().toLowerCase();
 
@@ -205,7 +220,7 @@ export async function validateAnswer(
   // Check alternative answers if available
   if (!isCorrect && question.alternative_answers) {
     const alternatives = question.alternative_answers as string[];
-    if (alternatives.some(alt => alt.trim().toLowerCase() === normalizedAnswer)) {
+    if (alternatives.some((alt) => alt.trim().toLowerCase() === normalizedAnswer)) {
       isCorrect = true;
     }
   }
@@ -317,19 +332,11 @@ export async function updateSessionProgress(
   }
 
   const session = rows[0];
-  
-  return {
-    ...session,
-    startedAt: session.startedAt instanceof Date 
-      ? session.startedAt.toISOString() 
-      : session.startedAt,
-    lastPlayedAt: session.lastPlayedAt instanceof Date 
-      ? session.lastPlayedAt.toISOString() 
-      : session.lastPlayedAt,
-    completedAt: session.completedAt instanceof Date 
-      ? session.completedAt.toISOString() 
-      : session.completedAt,
-  };
+  if (!session) {
+    throw new Error("Session not found or unauthorized");
+  }
+
+  return mapSessionRow(session as Record<string, unknown>);
 }
 
 /**

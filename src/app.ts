@@ -7,6 +7,7 @@ import { healthRoutes } from "./routes/health.js";
 import { learnRoutes } from "./routes/learn.js";
 import { adminRoutes } from "./routes/admin.js";
 import { webhookRoutes } from "./routes/webhooks.js";
+import { gemHunt } from "./routes/gem-hunt.js";
 import type { AppEnv } from "./types.js";
 
 export const app = new Hono<AppEnv>();
@@ -40,3 +41,4 @@ app.route("/health", healthRoutes);
 app.route("/learn", learnRoutes);
 app.route("/admin", adminRoutes);
 app.route("/webhooks", webhookRoutes);
+app.route("/gem-hunt", gemHunt);
