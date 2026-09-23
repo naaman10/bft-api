@@ -660,6 +660,7 @@ export type AssessmentDetailQuestion = {
   pointsAvailable: number;
   pointsEarned: number;
   feedback: string | null;
+  userAnswer: unknown;
 };
 
 export type AssessmentDetail = {
@@ -682,7 +683,8 @@ export async function getAssessmentDetailById(
       a.id,
       a.enrollment_id,
       a.completed_at,
-      e.content_id
+      e.content_id,
+      e.progress
     FROM assessments a
     JOIN enrollments e ON e.id = a.enrollment_id
     WHERE a.id = ${assessmentId}::uuid
@@ -699,6 +701,10 @@ export async function getAssessmentDetailById(
   }
   
   const contentId = String(row.content_id);
+  
+  const { parseProgress } = await import("./progress.js");
+  const progress = parseProgress(row.progress);
+  const progressItems = progress.items;
 
   let enrollmentName = contentId;
   if (env.CONTENTFUL_SPACE_ID && env.CONTENTFUL_ACCESS_TOKEN) {
@@ -787,12 +793,14 @@ export async function getAssessmentDetailById(
 
   const questions: AssessmentDetailQuestion[] = gradeRows.map((grade) => {
     const questionId = String(grade.question_id);
+    const progressItem = progressItems[questionId];
     return {
       questionId,
       questionText: questionTextMap.get(questionId) ?? questionId,
       pointsAvailable: Number(grade.points_available),
       pointsEarned: Number(grade.points_earned),
       feedback: feedbackMap.get(questionId) ?? null,
+      userAnswer: progressItem?.answer ?? null,
     };
   });
 
