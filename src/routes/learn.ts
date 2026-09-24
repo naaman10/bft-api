@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { env } from "../config/env.js";
 import { requireAuth } from "../middleware/require-auth.js";
 import { getContentEntry } from "../lib/content.js";
+import { getDb } from "../lib/db.js";
 import {
   getLearnEnrollmentForContent,
   listLearnEnrollmentsForNeonUser,
@@ -142,15 +143,43 @@ learnRoutes.get("/assessment/:assessmentId", requireAuth, async (c) => {
   }
 
   const assessmentId = c.req.param("assessmentId").trim();
+  const user = c.get("user");
 
   if (!assessmentId) {
     return c.json({ error: "Assessment not found." }, 404);
   }
 
+  // Verify user has a student record
+  const student = await getStudentByNeonUserId(user.id);
+  if (!student) {
+    return c.json({ error: "Student record not found." }, 404);
+  }
+
+  // Get assessment and verify ownership
   const assessment = await getAssessmentDetailById(assessmentId);
 
   if (!assessment) {
     return c.json({ error: "Assessment not found." }, 404);
+  }
+
+  // Verify the assessment belongs to this student
+  const sql = getDb();
+  const ownershipCheck = await sql`
+    SELECT e.student_id
+    FROM assessments a
+    JOIN enrollments e ON e.id = a.enrollment_id
+    WHERE a.id = ${assessmentId}::uuid
+    LIMIT 1
+  `;
+
+  if (ownershipCheck.length === 0) {
+    return c.json({ error: "Assessment not found." }, 404);
+  }
+
+  if (String(ownershipCheck[0].student_id) !== student.id) {
+    return c.json({ 
+      error: "You don't have permission to view this assessment." 
+    }, 403);
   }
 
   return c.json(assessment);

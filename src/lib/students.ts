@@ -64,10 +64,15 @@ export async function getStudentByNeonUserId(
   neonUserId: string
 ): Promise<Student | null> {
   const sql = getDb();
+  
+  // Check both neon_user_id column AND id column to support:
+  // 1. Students with neon_user_id set (standard Neon Auth users)
+  // 2. Students where id directly matches the auth user (students not using full app)
   const rows = await sql`
     SELECT id, email, name, neon_user_id, invited_at, target_points
     FROM students
     WHERE neon_user_id = ${neonUserId}::uuid
+       OR id = ${neonUserId}::uuid
     LIMIT 1
   `;
 
