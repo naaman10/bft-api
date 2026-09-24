@@ -41,7 +41,58 @@ In Contentful, the `questionMultipleChoice` content type should have:
 
 ## Data Flow
 
-### 1. Student Answering Questions
+### 1. Student Receives Question Content
+
+**API → Frontend**
+
+When a student loads content to answer questions:
+
+```typescript
+GET /learn/content/:contentId
+
+// Response includes full question content with options
+{
+  content: {
+    entryId: "...",
+    name: "...",
+    fields: {
+      sections: [{
+        fields: {
+          questions: [{
+            contentType: "questionMultipleChoice",
+            fields: {
+              text: "Why did the author include this paragraph?",
+              options: [                     // ✓ OPTIONS ARE PROVIDED
+                {
+                  "id": "1",
+                  "text": "To suggest...",
+                  "imageUrl": "..."          // Optional
+                },
+                {
+                  "id": "2", 
+                  "text": "To show..."
+                }
+              ],
+              points: 5
+              // Note: "answer" field is removed by redactAssessmentAnswers()
+            }
+          }]
+        }
+      }]
+    }
+  },
+  progressStatus: "in_progress",
+  progress: {...}
+}
+```
+
+**Key Points:**
+- ✅ Options array is included in the response
+- ✅ Option text and images are provided
+- ✅ Correct answer field is redacted (removed)
+- ✅ `redactAssessmentAnswers()` only removes the `answer` field, keeps `options`
+
+### 2. Student Submits Answer
 
 **Frontend → API**
 
@@ -83,7 +134,7 @@ The answer is stored in the `enrollments.progress` JSONB column:
 - ✅ No changes needed to `progress.ts` schema
 - ✅ Existing validation works as-is
 
-### 2. Automatic Scoring (Non-Assessment Content)
+### 3. Automatic Scoring (Non-Assessment Content)
 
 For content that doesn't require manual assessment:
 
@@ -108,7 +159,7 @@ function answersMatch(actual: unknown, expected: unknown): boolean {
 - ✅ Student answer "2" matches correct answer "2" → Points awarded
 - ✅ No code changes needed in `points.ts`
 
-### 3. Admin Review/Grading (Assessment Content)
+### 4. Admin Review/Grading (Assessment Content)
 
 **Endpoint:** `POST /admin/review/:enrollmentId`
 
@@ -182,7 +233,7 @@ const correctOption = getOptionById(question.questionContent.options, question.c
 
 **API Changes Needed:** ✅ None - Current structure already provides all necessary data
 
-### 4. Saving Assessment Grades
+### 5. Saving Assessment Grades
 
 **Endpoint:** `POST /admin/assessment/:enrollmentId`
 
@@ -210,7 +261,7 @@ const correctOption = getOptionById(question.questionContent.options, question.c
 - ✅ Admin grades based on comparing student answer vs correct answer
 - ✅ Grading logic remains the same regardless of answer format
 
-### 5. Student Viewing Completed Assessment
+### 6. Student Viewing Completed Assessment
 
 **Endpoint:** `GET /learn/assessment/:assessmentId`
 
@@ -446,10 +497,11 @@ SELECT * FROM assessment_question_grades WHERE assessment_id = :assessmentId;
 
 | Endpoint | Changes Required | Notes |
 |----------|-----------------|-------|
+| `GET /learn/content/:id` | ✅ None | **Already provides options** - `redactAssessmentAnswers()` keeps options, removes answer |
 | `PATCH /learn/content/:id/progress` | ✅ None | Already accepts `answer: unknown` |
-| `POST /admin/review/:enrollmentId` | ✅ None | Returns full question content |
+| `POST /admin/review/:enrollmentId` | ✅ None | Returns full question content with options |
 | `POST /admin/assessment/:enrollmentId` | ✅ None | Grades work same way |
-| `GET /learn/assessment/:assessmentId` | ⚠️ Enhancement | Add `questionContent` with options |
+| `GET /learn/assessment/:assessmentId` | ✅ Enhanced | Now includes `questionContent` with options |
 | `GET /admin/assessment/:enrollmentId` | ✅ None | Works as-is |
 
 ## Migration Path

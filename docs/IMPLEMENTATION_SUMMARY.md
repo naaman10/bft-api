@@ -146,6 +146,7 @@ Student answers are stored as the option `id` (string):
 
 These endpoints work without modification:
 
+- ✅ `GET /learn/content/:id` - **Already provides question options** to students via `redactAssessmentAnswers()` which keeps options, removes answer
 - ✅ `PATCH /learn/content/:id/progress` - Already accepts `answer: unknown`
 - ✅ `POST /admin/review/:enrollmentId` - Returns full question content with options
 - ✅ `POST /admin/assessment/:enrollmentId` - Grading works the same way
@@ -164,7 +165,36 @@ These endpoints work without modification:
 
 ## How It Works
 
-### 1. Student Answers Question
+### 1. Student Receives Question
+
+```typescript
+// Student loads content to answer
+GET /learn/content/:contentId
+
+// Response includes options (answer is redacted)
+{
+  content: {
+    fields: {
+      sections: [{
+        fields: {
+          questions: [{
+            fields: {
+              text: "Question text",
+              options: [              // ✓ PROVIDED
+                {id: "1", text: "Option A"},
+                {id: "2", text: "Option B"}
+              ]
+              // answer field is removed
+            }
+          }]
+        }
+      }]
+    }
+  }
+}
+```
+
+### 2. Student Submits Answer
 
 ```typescript
 // Frontend submits option ID
@@ -179,7 +209,7 @@ PATCH /learn/content/:contentId/progress
 }
 ```
 
-### 2. Automatic Scoring (Non-Assessment)
+### 3. Automatic Scoring (Non-Assessment)
 
 ```typescript
 // Existing answersMatch() function handles comparison
@@ -187,7 +217,7 @@ answersMatch("2", "2") // true → Points awarded
 answersMatch("2", "3") // false → No points
 ```
 
-### 3. Admin Reviews (Assessment)
+### 4. Admin Reviews (Assessment)
 
 ```typescript
 // Admin sees full question with all options
@@ -199,7 +229,7 @@ const selectedOption = options.find(opt => opt.id === studentAnswer);
 const correctOption = options.find(opt => opt.id === correctAnswer);
 ```
 
-### 4. Admin Grades
+### 5. Admin Grades
 
 ```typescript
 // Grading unchanged - admin awards points
@@ -215,7 +245,7 @@ POST /admin/assessment/:enrollmentId
 }
 ```
 
-### 5. Student Views Results
+### 6. Student Views Results
 
 ```typescript
 // Student sees their answer with full text/images
