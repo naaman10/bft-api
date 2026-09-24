@@ -708,6 +708,71 @@ describe('Assessment API', () => {
 });
 ```
 
+## Multiple Choice Questions with JSON Options
+
+The system now supports multiple choice questions with a structured JSON array format for options. See the dedicated guides for details:
+
+- **[Multiple Choice JSON Format - Implementation Guide](./multiple-choice-json-format.md)** - Backend implementation details
+- **[Frontend Multiple Choice Helpers](./frontend-multiple-choice-helpers.md)** - React components and utility functions
+
+### Quick Overview
+
+**Option Format:**
+```json
+[
+  {
+    "id": "1",
+    "text": "Option text here",
+    "imageUrl": "https://example.com/image.jpg"  // optional
+  },
+  {
+    "id": "2",
+    "text": "Another option"
+  }
+]
+```
+
+**Student Answer:** The `id` of the selected option (e.g., "1", "2", "3")
+
+**API Response Enhancement:**
+
+The `GET /learn/assessment/:assessmentId` endpoint now includes question options:
+
+```typescript
+{
+  questions: [
+    {
+      questionId: "...",
+      questionText: "...",
+      questionContent: {           // NEW
+        options: [...],
+        type: "questionMultipleChoice"
+      },
+      userAnswer: "2",            // Option ID
+      correctAnswer: "3",          // NEW: Correct option ID
+      pointsEarned: 0,
+      pointsAvailable: 5,
+      feedback: "..."
+    }
+  ]
+}
+```
+
+**Helper Function Example:**
+
+```typescript
+// Get full option text from ID
+function getOptionById(options: Array<{id: string, text: string}>, id: string) {
+  return options.find(opt => opt.id === id);
+}
+
+// Usage
+const selectedOption = getOptionById(question.questionContent.options, question.userAnswer);
+const correctOption = getOptionById(question.questionContent.options, question.correctAnswer);
+```
+
+See the [Frontend Multiple Choice Helpers](./frontend-multiple-choice-helpers.md) guide for complete React components and styling examples.
+
 ## Summary
 
 The assessment system provides a flexible workflow for grading enrollments:
@@ -716,6 +781,7 @@ The assessment system provides a flexible workflow for grading enrollments:
 2. Grade questions and provide feedback (save as you go)
 3. Complete assessment to finalize and award points
 4. Add general feedback any time
+5. Display multiple choice options with text and images
 
 Key points:
 - Save frequently to avoid losing work
@@ -724,3 +790,4 @@ Key points:
 - Provide clear feedback to admin users
 - Show progress indicators
 - Auto-save for better UX
+- Use helper functions for multiple choice display

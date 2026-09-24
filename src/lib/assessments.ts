@@ -719,13 +719,24 @@ export async function getCompletedAssessmentsForStudent(
   return result;
 }
 
+export type MultipleChoiceOption = {
+  id: string;
+  text: string;
+  imageUrl?: string;
+};
+
 export type AssessmentDetailQuestion = {
   questionId: string;
   questionText: string;
+  questionContent?: {
+    options?: MultipleChoiceOption[];
+    type?: string;
+  };
   pointsAvailable: number;
   pointsEarned: number;
   feedback: string | null;
   userAnswer: unknown;
+  correctAnswer?: unknown;
 };
 
 export type AssessmentDetail = {
@@ -805,17 +816,24 @@ export async function getAssessmentDetailById(
     feedbackMap.set(String(fb.question_id), String(fb.feedback));
   }
 
-  let questionTextMap = new Map<string, string>();
+  type QuestionData = {
+    text: string;
+    type: string;
+    options?: MultipleChoiceOption[];
+    correctAnswer?: unknown;
+  };
+
+  let questionDataMap = new Map<string, QuestionData>();
   if (env.CONTENTFUL_SPACE_ID && env.CONTENTFUL_ACCESS_TOKEN) {
     try {
       const { getContentful } = await import("./contentful.js");
       const client = getContentful();
       const entry = await client.getEntry(contentId, { include: 10 });
       
-      const extractQuestionText = (value: unknown, collected: Map<string, string>, seen = new WeakSet<object>()): void => {
+      const extractQuestionData = (value: unknown, collected: Map<string, QuestionData>, seen = new WeakSet<object>()): void => {
         if (Array.isArray(value)) {
           for (const item of value) {
-            extractQuestionText(item, collected, seen);
+            extractQuestionData(item, collected, seen);
           }
           return;
         }
@@ -839,33 +857,72 @@ export async function getAssessmentDetailById(
         ) {
           const text = fields.text || fields.question || fields.questionText;
           if (text && typeof text === "string") {
-            collected.set(sys.id, text);
+            const questionData: QuestionData = {
+              text,
+              type: contentType,
+              correctAnswer: fields.answer
+            };
+
+            // Extract options for multiple choice questions
+            if (contentType === "questionMultipleChoice" && fields.options) {
+              try {
+                // Options might be stored as JSON string or already parsed array
+                const options = typeof fields.options === "string" 
+                  ? JSON.parse(fields.options) 
+                  : fields.options;
+                
+                if (Array.isArray(options)) {
+                  questionData.options = options.map((opt: unknown) => {
+                    if (opt && typeof opt === "object") {
+                      const option = opt as Record<string, unknown>;
+                      return {
+                        id: String(option.id || ""),
+                        text: String(option.text || ""),
+                        ...(option.imageUrl ? { imageUrl: String(option.imageUrl) } : {})
+                      };
+                    }
+                    return { id: "", text: "" };
+                  }).filter(opt => opt.id && opt.text);
+                }
+              } catch (error) {
+                console.error('[ERROR] Failed to parse question options:', error);
+              }
+            }
+
+            collected.set(sys.id, questionData);
           }
           return;
         }
 
         for (const child of Object.values(fields ?? record)) {
-          extractQuestionText(child, collected, seen);
+          extractQuestionData(child, collected, seen);
         }
       };
 
       const rawFields = (entry.fields as unknown) as Record<string, unknown>;
-      extractQuestionText(rawFields, questionTextMap);
+      extractQuestionData(rawFields, questionDataMap);
     } catch (error) {
-      console.error('[ERROR] Failed to fetch question text from Contentful:', error);
+      console.error('[ERROR] Failed to fetch question data from Contentful:', error);
     }
   }
 
   const questions: AssessmentDetailQuestion[] = gradeRows.map((grade) => {
     const questionId = String(grade.question_id);
     const progressItem = progressItems[questionId];
+    const questionData = questionDataMap.get(questionId);
+    
     return {
       questionId,
-      questionText: questionTextMap.get(questionId) ?? questionId,
+      questionText: questionData?.text ?? questionId,
+      questionContent: questionData ? {
+        options: questionData.options,
+        type: questionData.type
+      } : undefined,
       pointsAvailable: Number(grade.points_available),
       pointsEarned: Number(grade.points_earned),
       feedback: feedbackMap.get(questionId) ?? null,
       userAnswer: progressItem?.answer ?? null,
+      correctAnswer: questionData?.correctAnswer
     };
   });
 
