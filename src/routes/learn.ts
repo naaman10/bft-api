@@ -172,11 +172,12 @@ learnRoutes.get("/assessment/:assessmentId", requireAuth, async (c) => {
     LIMIT 1
   `;
 
-  if (ownershipCheck.length === 0) {
+  const ownerRecord = ownershipCheck[0];
+  if (!ownerRecord) {
     return c.json({ error: "Assessment not found." }, 404);
   }
 
-  if (String(ownershipCheck[0].student_id) !== student.id) {
+  if (String(ownerRecord.student_id) !== student.id) {
     return c.json({ 
       error: "You don't have permission to view this assessment." 
     }, 403);
