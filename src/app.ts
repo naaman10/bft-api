@@ -20,13 +20,22 @@ app.use(
     crossOriginResourcePolicy: "cross-origin",
   })
 );
+
+// Apply restrictive CORS to all routes except /web/* (which handle their own CORS)
 app.use(
-  cors({
-    origin: frontendOrigins,
-    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowHeaders: ["Authorization", "Content-Type", "X-Admin-Api-Key"],
-    maxAge: 86400,
-  })
+  "*",
+  async (c, next) => {
+    if (c.req.path.startsWith("/web/")) {
+      // Skip global CORS for /web routes - they define their own CORS policy
+      return next();
+    }
+    return cors({
+      origin: frontendOrigins,
+      allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowHeaders: ["Authorization", "Content-Type", "X-Admin-Api-Key"],
+      maxAge: 86400,
+    })(c, next);
+  }
 );
 
 app.onError((error, c) => {
