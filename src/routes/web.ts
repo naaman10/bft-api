@@ -1,10 +1,22 @@
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { z } from "zod";
 import { getResend } from "../lib/resend.js";
 import { env } from "../config/env.js";
 import type { AppEnv } from "../types.js";
 
 export const webRoutes = new Hono<AppEnv>();
+
+// Apply permissive CORS for public web endpoints
+webRoutes.use(
+  "*",
+  cors({
+    origin: "*",
+    allowMethods: ["POST", "OPTIONS"],
+    allowHeaders: ["Content-Type"],
+    maxAge: 86400,
+  })
+);
 
 const consentSchema = z.object({
   email: z.string().email(),
