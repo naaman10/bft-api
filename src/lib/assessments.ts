@@ -728,6 +728,8 @@ export type MultipleChoiceOption = {
 export type AssessmentDetailQuestion = {
   questionId: string;
   questionText: string;
+  questionType?: string;
+  options?: MultipleChoiceOption[];
   questionContent?: {
     options?: MultipleChoiceOption[];
     type?: string;
@@ -914,6 +916,8 @@ export async function getAssessmentDetailById(
     return {
       questionId,
       questionText: questionData?.text ?? questionId,
+      questionType: questionData?.type,
+      options: questionData?.options,
       questionContent: questionData ? {
         options: questionData.options,
         type: questionData.type
