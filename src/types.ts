@@ -1,10 +1,12 @@
 import type { AuthUser } from "./lib/auth.js";
 import type { LearnEnrollment } from "./lib/enrollments.js";
 import type { CompletedAssessment } from "./lib/assessments.js";
+import type { Student } from "./lib/students.js";
 
 export type AppEnv = {
   Variables: {
     user: AuthUser;
+    student: Student;
   };
 };
 
