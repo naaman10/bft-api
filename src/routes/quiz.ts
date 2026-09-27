@@ -117,7 +117,7 @@ quizRoutes.post("/validate-answer", async (c) => {
  */
 quizRoutes.post("/submit", requireAuth, async (c) => {
   try {
-    const user = c.get("user");
+    const student = c.get("student");
     const body = await c.req.json();
     const quizData = body as SubmitQuizData;
 
@@ -130,7 +130,7 @@ quizRoutes.post("/submit", requireAuth, async (c) => {
       return c.json({ error: "Quiz responses are required" }, 400);
     }
 
-    const result = await submitQuizResults(user.id, quizData);
+    const result = await submitQuizResults(student.id, quizData);
     return c.json(result);
   } catch (error) {
     console.error("Error submitting quiz results:", error);
@@ -150,7 +150,7 @@ quizRoutes.post("/submit", requireAuth, async (c) => {
  */
 quizRoutes.get("/history", requireAuth, async (c) => {
   try {
-    const user = c.get("user");
+    const student = c.get("student");
     const limitStr = c.req.query("limit");
     const gameType = c.req.query("gameType") || "quiz_generator";
 
@@ -160,7 +160,7 @@ quizRoutes.get("/history", requireAuth, async (c) => {
       return c.json({ error: "Limit must be between 1 and 100" }, 400);
     }
 
-    const results = await getQuizHistory(user.id, limit, gameType);
+    const results = await getQuizHistory(student.id, limit, gameType);
     return c.json({ results });
   } catch (error) {
     console.error("Error fetching quiz history:", error);
@@ -180,11 +180,11 @@ quizRoutes.get("/history", requireAuth, async (c) => {
  */
 quizRoutes.get("/analytics", requireAuth, async (c) => {
   try {
-    const user = c.get("user");
+    const student = c.get("student");
     const yearGroup = c.req.query("yearGroup");
     const subject = c.req.query("subject");
 
-    const analytics = await getAnalytics(user.id, yearGroup, subject);
+    const analytics = await getAnalytics(student.id, yearGroup, subject);
     return c.json(analytics);
   } catch (error) {
     console.error("Error fetching analytics:", error);

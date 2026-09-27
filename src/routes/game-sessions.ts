@@ -20,7 +20,7 @@ const gameSessionRoutes = new Hono<AppEnv>();
  */
 gameSessionRoutes.post("/sessions", requireAuth, async (c) => {
   try {
-    const user = c.get("user");
+    const student = c.get("student");
     const body = await c.req.json();
 
     // Validate request body
@@ -37,8 +37,8 @@ gameSessionRoutes.post("/sessions", requireAuth, async (c) => {
 
     const sessionData = validation.data;
 
-    // Create game session
-    const session = await createGameSession(user.id, sessionData);
+    // Create game session with internal student ID
+    const session = await createGameSession(student.id, sessionData);
 
     return c.json(session, 201);
   } catch (error) {
@@ -64,7 +64,7 @@ gameSessionRoutes.post("/sessions", requireAuth, async (c) => {
  */
 gameSessionRoutes.get("/sessions", requireAuth, async (c) => {
   try {
-    const user = c.get("user");
+    const student = c.get("student");
 
     // Parse query parameters
     const gameType = c.req.query("gameType");
@@ -111,7 +111,7 @@ gameSessionRoutes.get("/sessions", requireAuth, async (c) => {
     };
 
     // Get sessions
-    const sessions = await getGameSessions(user.id, filters);
+    const sessions = await getGameSessions(student.id, filters);
 
     return c.json({ sessions });
   } catch (error) {
@@ -132,14 +132,14 @@ gameSessionRoutes.get("/sessions", requireAuth, async (c) => {
  */
 gameSessionRoutes.get("/sessions/:id", requireAuth, async (c) => {
   try {
-    const user = c.get("user");
+    const student = c.get("student");
     const sessionId = c.req.param("id");
 
     if (!sessionId) {
       return c.json({ error: "Session ID is required" }, 400);
     }
 
-    const session = await getGameSessionById(sessionId, user.id);
+    const session = await getGameSessionById(sessionId, student.id);
 
     return c.json(session);
   } catch (error) {

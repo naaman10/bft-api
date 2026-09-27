@@ -21,7 +21,7 @@ gemHunt.use("*", requireAuth);
  */
 gemHunt.post("/sessions", async (c) => {
   try {
-    const user = c.get("user");
+    const student = c.get("student");
     const body = await c.req.json();
     const { yearGroup, subject } = body;
 
@@ -29,7 +29,7 @@ gemHunt.post("/sessions", async (c) => {
       return c.json({ error: "yearGroup and subject are required" }, 400);
     }
 
-    const session = await createGemHuntSession(user.id, yearGroup, subject);
+    const session = await createGemHuntSession(student.id, yearGroup, subject);
     return c.json(session, 201);
   } catch (error) {
     console.error("Error creating Gem Hunt session:", error);
@@ -48,9 +48,9 @@ gemHunt.post("/sessions", async (c) => {
  */
 gemHunt.get("/sessions/:id", async (c) => {
   try {
-    const user = c.get("user");
+    const student = c.get("student");
     const sessionId = c.req.param("id");
-    const session = await getGemHuntSession(user.id, sessionId);
+    const session = await getGemHuntSession(student.id, sessionId);
 
     if (!session) {
       return c.json({ error: "Session not found" }, 404);
@@ -69,10 +69,10 @@ gemHunt.get("/sessions/:id", async (c) => {
  */
 gemHunt.patch("/sessions/:id", async (c) => {
   try {
-    const user = c.get("user");
+    const student = c.get("student");
     const sessionId = c.req.param("id");
     const updates = await c.req.json();
-    const session = await updateSessionProgress(user.id, sessionId, updates);
+    const session = await updateSessionProgress(student.id, sessionId, updates);
     return c.json(session);
   } catch (error) {
     console.error("Error updating Gem Hunt session:", error);
@@ -166,7 +166,7 @@ gemHunt.post("/questions/validate", async (c) => {
  */
 gemHunt.post("/levels/complete", async (c) => {
   try {
-    const user = c.get("user");
+    const student = c.get("student");
     const body = await c.req.json();
     const {
       sessionId,
@@ -195,7 +195,7 @@ gemHunt.post("/levels/complete", async (c) => {
     }
 
     const result = await saveLevelCompletion(
-      user.id,
+      student.id,
       sessionId,
       levelNumber,
       gemsCollected,

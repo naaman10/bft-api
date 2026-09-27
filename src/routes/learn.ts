@@ -24,28 +24,22 @@ export const learnRoutes = new Hono<AppEnv>();
 
 learnRoutes.get("/user", requireAuth, async (c) => {
   const user = c.get("user");
-  console.log('[DEBUG] /learn/user called for user:', user.id);
+  const student = c.get("student");
+  console.log('[DEBUG] /learn/user called for user:', user.id, 'student:', student.id);
   
-  // Fetch student and completed assessments
+  // Fetch completed assessments and notifications
   let completedAssessments: Awaited<ReturnType<typeof getCompletedAssessmentsForStudent>> = [];
   let unreadNotificationCount = 0;
-  let student: Awaited<ReturnType<typeof getStudentByNeonUserId>> | null = null;
 
   try {
-    student = await getStudentByNeonUserId(user.id);
-    console.log('[DEBUG] Student found:', student ? student.id : 'null');
-    if (student) {
-      completedAssessments = await getCompletedAssessmentsForStudent(student.id);
-      // Get unread notification count
-      if (env.DATABASE_URL) {
-        try {
-          unreadNotificationCount = await getUnreadCount(student.id);
-        } catch (error) {
-          console.error("Error fetching unread notification count:", error);
-        }
+    completedAssessments = await getCompletedAssessmentsForStudent(student.id);
+    // Get unread notification count
+    if (env.DATABASE_URL) {
+      try {
+        unreadNotificationCount = await getUnreadCount(student.id);
+      } catch (error) {
+        console.error("Error fetching unread notification count:", error);
       }
-    } else {
-      console.log('[DEBUG] No student record found for neon user:', user.id);
     }
   } catch (error) {
     console.error("Error fetching completed assessments:", error);
@@ -143,16 +137,10 @@ learnRoutes.get("/assessment/:assessmentId", requireAuth, async (c) => {
   }
 
   const assessmentId = c.req.param("assessmentId").trim();
-  const user = c.get("user");
+  const student = c.get("student");
 
   if (!assessmentId) {
     return c.json({ error: "Assessment not found." }, 404);
-  }
-
-  // Verify user has a student record
-  const student = await getStudentByNeonUserId(user.id);
-  if (!student) {
-    return c.json({ error: "Student record not found." }, 404);
   }
 
   // Get assessment and verify ownership
@@ -194,13 +182,7 @@ learnRoutes.get("/notifications", requireAuth, async (c) => {
     return c.json({ error: "Database is not configured." }, 503);
   }
 
-  const user = c.get("user");
-  
-  // Get student from neon user ID
-  const student = await getStudentByNeonUserId(user.id);
-  if (!student) {
-    return c.json({ error: "Student not found" }, 404);
-  }
+  const student = c.get("student");
   
   const unreadOnly = c.req.query("unread") === "true";
   const limit = parseInt(c.req.query("limit") || "50");
@@ -226,12 +208,7 @@ learnRoutes.get("/notifications/unread-count", requireAuth, async (c) => {
     return c.json({ count: 0 });
   }
 
-  const user = c.get("user");
-  
-  const student = await getStudentByNeonUserId(user.id);
-  if (!student) {
-    return c.json({ count: 0 });
-  }
+  const student = c.get("student");
   
   try {
     const count = await getUnreadCount(student.id);
@@ -248,14 +225,10 @@ learnRoutes.patch("/notifications/:id/read", requireAuth, async (c) => {
     return c.json({ error: "Database is not configured." }, 503);
   }
 
-  const user = c.get("user");
+  const student = c.get("student");
   const notificationId = c.req.param("id");
   
   // Verify the notification belongs to this student
-  const student = await getStudentByNeonUserId(user.id);
-  if (!student) {
-    return c.json({ error: "Student not found" }, 404);
-  }
   
   try {
     await markNotificationsAsRead([notificationId]);
@@ -272,12 +245,7 @@ learnRoutes.patch("/notifications/read-all", requireAuth, async (c) => {
     return c.json({ error: "Database is not configured." }, 503);
   }
 
-  const user = c.get("user");
-  
-  const student = await getStudentByNeonUserId(user.id);
-  if (!student) {
-    return c.json({ error: "Student not found" }, 404);
-  }
+  const student = c.get("student");
   
   try {
     const count = await markAllNotificationsAsRead(student.id);
