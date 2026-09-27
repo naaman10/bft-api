@@ -162,7 +162,7 @@ export async function getRandomQuestions(
       year_group as "yearGroup",
       subject,
       difficulty_level as "difficultyLevel"
-    FROM gem_hunt_questions
+    FROM questions
     WHERE year_group = ${yearGroup}
       AND subject = ${subject}
       AND active = TRUE
@@ -193,7 +193,7 @@ export async function validateAnswer(
   // Get the correct answer
   const questionRows = await sql`
     SELECT correct_answer, alternative_answers
-    FROM gem_hunt_questions
+    FROM questions
     WHERE id = ${questionId}::uuid
     LIMIT 1
   `;

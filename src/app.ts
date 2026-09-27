@@ -8,6 +8,7 @@ import { learnRoutes } from "./routes/learn.js";
 import { adminRoutes } from "./routes/admin.js";
 import { webhookRoutes } from "./routes/webhooks.js";
 import { gemHunt } from "./routes/gem-hunt.js";
+import { quizRoutes } from "./routes/quiz.js";
 import { webRoutes } from "./routes/web.js";
 import type { AppEnv } from "./types.js";
 
@@ -52,4 +53,5 @@ app.route("/learn", learnRoutes);
 app.route("/admin", adminRoutes);
 app.route("/webhooks", webhookRoutes);
 app.route("/gem-hunt", gemHunt);
+app.route("/quiz", quizRoutes);
 app.route("/web", webRoutes);
