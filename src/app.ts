@@ -10,6 +10,7 @@ import { webhookRoutes } from "./routes/webhooks.js";
 import { gemHunt } from "./routes/gem-hunt.js";
 import { quizRoutes } from "./routes/quiz.js";
 import { webRoutes } from "./routes/web.js";
+import { gameSessionRoutes } from "./routes/game-sessions.js";
 import type { AppEnv } from "./types.js";
 
 export const app = new Hono<AppEnv>();
@@ -55,3 +56,4 @@ app.route("/webhooks", webhookRoutes);
 app.route("/gem-hunt", gemHunt);
 app.route("/quiz", quizRoutes);
 app.route("/web", webRoutes);
+app.route("/api/games", gameSessionRoutes);
